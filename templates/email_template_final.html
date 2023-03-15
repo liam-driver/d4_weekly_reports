@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>{{ client }} Weekly PPC Report ({{ month_start }} - {{ yday }})</title>
+</head>
+<body>
+  <h1>{{ client }} Weekly PPC Report ({{ month_start }} - {{ yday }})</h1>
+  <h2>What we've done:</h2>
+  <ul>
+    {% for b1 in b1 %}
+    <li>{{ b1 }} </li>
+    {% endfor %}
+  </ul>
+  <br>
+  <h2>KPIs:</h2>
+  <ul>
+    {% for key, value in b3.items() %}
+    <li>{{ key }}: {{ value }} </li>
+    {% endfor %}
+  </ul>
+  <br>
+  <h2>Spend:</h2>
+  <ul>
+    {% for key, value in b4.items() %}
+    <li>{{ key }}: {{ value }} </li>
+    {% endfor %}
+  </ul>
+  <br>
+  <h2>Actions:</h2>
+  <ul>
+    {% for b5 in b5 %}
+    <li>{{ b5 }} </li>
+    {% endfor %}
+  </ul>
+  <br>
+</body>
+</html>
