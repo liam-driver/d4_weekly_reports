@@ -8,17 +8,22 @@
 
   <h2>KPIs:</h2>
   <ul>
-    {% for key, value in b3.items() %}
-    <li>{{ key }}: {{ value }} </li>
+    {% for key, value in kpis_block.items() %}
+    <li> {{ key }}: (± {{ value }}) </li>
     {% endfor %}
   </ul>
   <br>
   <h2>Spend:</h2>
   <ul>
-    {% for key, value in b4.items() %}
-    <li>{{ key }}: {{ value }} </li>
-    {% endfor %}
+    <li> {{ spend_block[0] }} / {{ spend_block[1] }} / {{ spend_block[2] }} </li>
   </ul>
+  <br>
+  <h2>Metrics:</h2>
+  <ul>
+    {% for key, value in metrics_block.items() %}
+    <li> {{ key }}: (± {{ value }}) </li>
+    {% endfor %}
+  </ul> 
   <br>
   <br>
 </body>
