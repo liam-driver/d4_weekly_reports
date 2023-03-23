@@ -8,22 +8,22 @@
 
   <h2>KPIs:</h2>
   <ul>
-    {% for key, value in kpis_block.items() %}
-    <li> {{ key }}: (± {{ value }}) </li>
+    {% for kpist,kpisl,kpisy in kpist_kpisl_kpisy %}
+    <li> {{ kpist }}: {{ kpisl }} (± {{ kpisy }}) </li>
     {% endfor %}
   </ul>
   <br>
   <h2>Spend:</h2>
   <ul>
-    <li> {{ spend_block[0] }} / {{ spend_block[1] }} / {{ spend_block[2] }} </li>
+    <li> {{ spend_block[0] }} / {{ spend_block[1] }} / {{ spend_block[2] }} (Spend / Run Rate / Budget) </li>
   </ul>
   <br>
   <h2>Metrics:</h2>
   <ul>
-    {% for key, value in metrics_block.items() %}
-    <li> {{ key }}: (± {{ value }}) </li>
+    {% for metricst,metricsl,metricsy in metricst_metricsl_metricsy %}
+    <li> {{ metricst }}: {{ metricsl }} (± {{ metricsy }}) </li>
     {% endfor %}
-  </ul> 
+      </ul>
   <br>
   <br>
 </body>
