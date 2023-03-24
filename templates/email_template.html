@@ -5,7 +5,20 @@
 </head>
 <body>
   <h1>{{ client }} Weekly PPC Report ({{ month_start }} - {{ yday }})</h1>
-
+  <h2>What We've Done:</h2>
+  <ul>
+    {% for w in wwd %}
+      <li>{{ w }}</li>
+    {% endfor %}
+  </ul>
+  <br>
+  <h2>Insights: </h2>
+  <ul>
+    {% for insight in insights %}
+      <li>{{ insight }}</li>
+    {% endfor %}
+  </ul>
+  <br>
   <h2>KPIs:</h2>
   <ul>
     {% for kpist,kpisl,kpisy in kpist_kpisl_kpisy %}
@@ -25,6 +38,12 @@
     {% endfor %}
       </ul>
   <br>
+  <h2>Actions: </h2>
+  <ul>
+    {% for action in actions %}
+      <li>{{ action }}</li>
+    {% endfor %}
+  </ul>
   <br>
 </body>
 </html>

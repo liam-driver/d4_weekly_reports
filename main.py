@@ -21,6 +21,8 @@ sh = sa.open('Weekly Reports')
 # Config sheet
 cfg = sh.worksheet("Config")
 ws_config = pd.DataFrame(cfg.get_all_records())
+ais = sh.worksheet("Actions & Insights")
+ws_ais = pd.DataFrame(ais.get_all_records())
 locale.setlocale(locale.LC_ALL, 'en_GB.UTF-8')
 # act = sh.worksheet("Actions & Insights")
 # ws_act = pd.DataFrame(act.get_all_records())
@@ -61,7 +63,6 @@ def main():
 
         spend_block = costs(data)
         budget = str(ws_config.at[2, client])
-        spend_block.append("£" + budget)
 
         metricsd = metrics(data)
         metricsl = list(metricsd.keys())
@@ -78,6 +79,12 @@ def main():
             else:
                 metricsl[i] = str(metricsl[i]) + "%"
 
+        actions_list = actions(client)
+        action = actions_list[2].pop()
+        insights = actions_list[1].pop()
+        wwd = actions_list[0].pop()
+
+        print(wwd, insights, action)
 
         # Initialise the email
         env = Environment(loader=FileSystemLoader('templates'))
@@ -87,7 +94,7 @@ def main():
         month_start = yday - datetime.timedelta(yday.day - 1)
         #Write and send the email
         html = template.render(client=client, yday=yday, month_start=month_start, kpist_kpisl_kpisy=zip(kpist,kpisl,kpisy), spend_block=spend_block,
-                               metricst_metricsl_metricsy=zip(metricst,metricsl,metricsy))
+                               metricst_metricsl_metricsy=zip(metricst,metricsl,metricsy), wwd=wwd, insights= insights, actions=action)
         email(html, client, em)
     return 0
 
@@ -162,7 +169,10 @@ def data_ecom(client):
 
     for column in new_df:
         cy = new_df.at[current_year, column]
-        py = new_df.at[previous_year, column]
+        if df_raw['Year'].min() < previous_year:
+            py = new_df.at[previous_year, column]
+        else:
+            py = 0
         YoY[column] = ((cy - py) / py) * 100
 
 
@@ -259,14 +269,27 @@ def metrics(data):
         metrics_results[data.at[current_year, columns]] = data.at["YoY", columns]
     return metrics_results
 def actions(client):
-    results = []
-    cell = act.find(client)
-    for i in range(15, 30, 1):
-        if act.cell(i, cell.col).value is None:
-            break
-        else:
-            results.append(act.cell(i, cell.col).value)
-    return results
+
+
+    ws = sh.worksheet("Actions & Insights")
+    df_raw = pd.DataFrame(ws.get_all_records())
+    wwd = []
+    insights = []
+    actions = []
+
+    for i in range(15):
+        wwd.append(df_raw.at[i, client])
+        insights.append(df_raw.at[(i + 15), client])
+        actions.append(df_raw.at[(i + 30), client])
+    while '' in wwd:
+        wwd.remove('')
+    while '' in insights:
+        insights.remove('')
+    while '' in actions:
+        actions.remove('')
+    zip_list = [[wwd], [insights], [actions]]
+
+    return zip_list
 
 def email(html, client, email_address):
     # Define email & password for sender email
