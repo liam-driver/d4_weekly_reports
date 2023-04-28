@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>{{ client }} Weekly PPC Report ({{ period_start }} - {{ period_end }})</title>
+</head>
+<body>
+  <h1>{{ client }} Weekly PPC Report ({{ period_start }} - {{ period_end }})</h1>
+  <h2>What We've Done:</h2>
+  <ul>
+    {% for w in wwd %}
+      <li>{{ w }}</li>
+    {% endfor %}
+  </ul>
+  <br>
+  <h2>Insights: </h2>
+  <ul>
+    {% for insight in insights %}
+      <li>{{ insight }}</li>
+    {% endfor %}
+  </ul>
+  <br>
+  <h2>KPIs:</h2>
+  <ul>
+    {% for d, c, cy, cp, cpy in list %}
+    <li> {{ d }}: {{ c }} (± {{ cy }}) Conversions @ {{ cp }} (±{{ cpy }}) CPL </li>
+    {% endfor %}
+  </ul>
+   <h2>Spend:</h2>
+  <ul>
+    <li> {{ spend_block[0] }} / {{ spend_block[1] }} / {{ budget }} (Spend / Run Rate / Budget) </li>
+  </ul>
+  <br>
+    <h2>Metrics:</h2>
+  <ul>
+    {% for metricst,metricsl,metricsy in metricst_metricsl_metricsy %}
+    <li> {{ metricst }}: {{ metricsl }} (± {{ metricsy }}) </li>
+    {% endfor %}
+      </ul>
+  <br>
+  <h2>Actions: </h2>
+  <ul>
+    {% for action in actions %}
+      <li>{{ action }}</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>

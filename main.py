@@ -8,8 +8,10 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Environment, FileSystemLoader
 from datetime import date
+import numpy as np
 import locale
 from pandas.tseries.offsets import MonthEnd
+locale.setlocale(locale.LC_ALL, 'en_US')
 pd.options.mode.chained_assignment = None  # default='warn'
 
 # API call
@@ -42,74 +44,172 @@ def main():
     em = emails()
     # Loop through the list and execute all the functions
     for client, client_type in clients.items():
-        if client_type == 'Lead Gen':
-            data = data_lead(client)
-            kpist = ["Conversions", "CPA"]
-            metricst = ["Impressions", "Clicks", "Cost", "Conversions", "CTR", "CPC", "Conversion Rate", "CPA"]
+        print(client)
+        if client == 'EGO' or client == 'NFG':
+            # Get current dataset
+            dimension = get_dimension(client)
+            data_current = get_data_current(client, dimension)
+            # Get previous dataset
+            data_prev = get_data_prev(client, dimension)
+            # Get lists (Territory, Conversions, Conversions YoY, CPL, CPL YoY)
+            dimensions = data_current.index.tolist()
+            for d in dimensions:
+                if d == 'nan' or d == 'Unknown' or d == '':
+                    dimensions.remove(d)
+            print(dimensions)
+            conversion = []
+            conversion_yoy = []
+            cpl = []
+            cpl_yoy = []
+
+            for i in range(len(dimensions)):
+                cy = data_current.at[dimensions[i], data_current.columns[3]]
+                conversion.append(cy)
+                py = data_prev.at[dimensions[i], data_prev.columns[3]]
+                conversion_yoy.append(((cy - py) / py) * 100)
+
+                cy = data_current.at[dimensions[i], data_current.columns[7]]
+                cpl.append(cy)
+                py = data_prev.at[dimensions[i], data_prev.columns[7]]
+                cpl_yoy.append(((cy - py) / py) * 100)
+
+            #Metrics
+            if client_type == 'Lead Gen':
+                data = data_lead(client)
+                kpist = ["Conversions", "CPA"]
+                metricst = ["Impressions", "Clicks", "Cost", "Conversions", "CTR", "CPC", "Conversion Rate", "CPA"]
+
+            else:
+                data = data_ecom(client)
+                kpist = ["Transactions", "Transaction Revenue", "CPA", "ROAS"]
+                metricst = ["Impressions", "Clicks", "Cost", "Transactions", "Transaction Revenue", "CTR", "CPC", "Conversion Rate", "CPA", "ROAS"]
+
+            # Initialise the Metrics Lists
+            metricsd = metrics(data)
+            metricsl = list(metricsd.keys())
+            metricsy = list(metricsd.values())
+            for i in range(len(metricsy)):
+                metricsy[i] = str(metricsy[i]) + "%"
+            # Format the values to % and $z
+            for i in range(len(metricst)):
+                if metricst[i] == 'Impressions' or metricst[i] == 'Clicks' or metricst[i] == 'Transactions' or metricst[i] == 'Conversions':
+                    metricsl[i] = int(metricsl[i])
+                    metricsl[i] = f"{metricsl[i]:,d}"
+                elif metricst[i] == 'Cost' or metricst[i] == 'Transaction Revenue' or metricst[i] == 'CPC' or metricst[i] == 'CPA':
+                    metricsl[i] = locale.currency(metricsl[i], grouping=True)
+                else:
+                    metricsl[i] = str(metricsl[i]) + "%"
+
+            # Costs
+            spend_block = costs_dimension(data_current)
+            budget = budgets(client)
+
+            # Format the numbers
+            for i in range(len(cpl)):
+                conversion[i] = int(conversion[i])
+                conversion_yoy[i] = str(round(conversion_yoy[i], 2)) + "%"
+                conversion[i] = f"{conversion[i]:,d}"
+                cpl[i] = locale.currency(cpl[i], grouping=True)
+                cpl_yoy[i] = str(round(cpl_yoy[i], 2)) + "%"
+            # Initialise the email
+            env = Environment(loader=FileSystemLoader('templates'))
+            template = env.get_template('email_template_dimensions.html')
+
+            # Get the date
+            month_start = yday - datetime.timedelta(yday.day - 1)
+            day_check = pd.Timestamp.now()
+            if day_check.day <= 3:
+                period_end = now
+            else:
+                period_end =  yday
+            period_end = period_end.normalize().strftime("%d/%m/%Y")
+            period_start = first.strftime("%d/%m/%Y")
+
+            # Actions and Insights
+            actions_list = actions(client)
+            action = actions_list[2].pop()
+            insights = actions_list[1].pop()
+            wwd = actions_list[0].pop()
+
+            # Write and send the email
+            html = template.render(client=client, period_end=period_end, period_start=period_start, list=zip(dimensions, conversion, conversion_yoy, cpl,cpl_yoy), spend_block=spend_block,
+                                   budget=budget, wwd=wwd, insights=insights, actions=action, metricst_metricsl_metricsy=zip(metricst,metricsl,metricsy))
+            email(html, client, em)
 
         else:
-            data = data_ecom(client)
-            kpist = ["Transactions", "Transaction Revenue", "CPA", "ROAS"]
-            metricst = ["Impressions", "Clicks", "Cost", "Transactions", "Transaction Revenue", "CTR", "CPC", "Conversion Rate", "CPA", "ROAS"]
+            if client_type == 'Lead Gen':
+                data = data_lead(client)
+                kpist = ["Conversions", "CPA"]
+                metricst = ["Impressions", "Clicks", "Cost", "Conversions", "CTR", "CPC", "Conversion Rate", "CPA"]
 
-        # Initialise the KPI lists
-        kpisd = kpis(data, client_type)
-        kpisl = list(kpisd.keys())
-        kpisy = list(kpisd.values())
-        for i in range(len(kpisy)):
-            kpisy[i] = str(kpisy[i]) + "%"
-
-        for i in range(len(kpist)):
-            if kpist[i] == 'Impressions' or kpist[i] == 'Clicks' or kpist[i] == 'Conversions' or kpist[i] == 'Transactions':
-                kpisl[i] = int(kpisl[i])
-            elif kpist[i] == 'Cost' or kpist[i] == 'Transaction Revenue' or kpist[i] == 'CPC' or kpist[i] == 'CPA':
-                kpisl[i] = locale.currency(kpisl[i], grouping=True)
             else:
-                kpisl[i] = str(kpisl[i]) + "%"
-        # Initialise the Spend list
-        spend_block = costs(data)
-        budget = budgets(client)
+                data = data_ecom(client)
+                kpist = ["Transactions", "Transaction Revenue", "CPA", "ROAS"]
+                metricst = ["Impressions", "Clicks", "Cost", "Transactions", "Transaction Revenue", "CTR", "CPC", "Conversion Rate", "CPA", "ROAS"]
 
-        # Initialise the Metrics Lists
-        metricsd = metrics(data)
-        metricsl = list(metricsd.keys())
-        metricsy = list(metricsd.values())
-        for i in range(len(metricsy)):
-            metricsy[i] = str(metricsy[i]) + "%"
 
-        # Format the values to % and $z
-        for i in range(len(metricst)):
-            if metricst[i] == 'Impressions' or metricst[i] == 'Clicks' or metricst[i] =='Transactions' or metricst[i] =='Conversions':
-                metricsl[i] = int(metricsl[i])
-            elif metricst[i] == 'Cost' or metricst[i] == 'Transaction Revenue' or metricst[i] =='CPC' or metricst[i] =='CPA':
-                metricsl[i] = locale.currency(metricsl[i], grouping= True)
+            # Initialise the KPI lists
+            kpisd = kpis(data, client_type)
+            kpisl = list(kpisd.keys())
+            if len(kpisl) < 2:
+                continue
+            kpisy = list(kpisd.values())
+            for i in range(len(kpisy)):
+                kpisy[i] = str(kpisy[i]) + "%"
+
+            for i in range(len(kpist)):
+                if kpist[i] == 'Impressions' or kpist[i] == 'Clicks' or kpist[i] == 'Conversions' or kpist[i] == 'Transactions':
+                    kpisl[i] = int(kpisl[i])
+                    kpisl[i] = f"{kpisl[i]:,d}"
+                elif kpist[i] == 'Cost' or kpist[i] == 'Transaction Revenue' or kpist[i] == 'CPC' or kpist[i] == 'CPA':
+                    kpisl[i] = locale.currency(kpisl[i], grouping=True)
+                else:
+                    kpisl[i] = str(kpisl[i]) + "%"
+
+            # Initialise the Spend list
+            spend_block = costs(data)
+            budget = budgets(client)
+
+            # Initialise the Metrics Lists
+            metricsd = metrics(data)
+            metricsl = list(metricsd.keys())
+            metricsy = list(metricsd.values())
+            for i in range(len(metricsy)):
+                metricsy[i] = str(metricsy[i]) + "%"
+            # Format the values to % and $z
+            for i in range(len(metricst)):
+                if metricst[i] == 'Impressions' or metricst[i] == 'Clicks' or metricst[i] =='Transactions' or metricst[i] =='Conversions':
+                    metricsl[i] = int(metricsl[i])
+                    metricsl[i] = f"{metricsl[i]:,d}"
+                elif metricst[i] == 'Cost' or metricst[i] == 'Transaction Revenue' or metricst[i] =='CPC' or metricst[i] =='CPA':
+                    metricsl[i] = locale.currency(metricsl[i], grouping= True)
+                else:
+                    metricsl[i] = str(metricsl[i]) + "%"
+
+            # Initialise the Actions and Insights Lists
+            actions_list = actions(client)
+            action = actions_list[2].pop()
+            insights = actions_list[1].pop()
+            wwd = actions_list[0].pop()
+
+            # Initialise the email
+            env = Environment(loader=FileSystemLoader('templates'))
+            template = env.get_template('email_template.html')
+
+            # Get the date
+            month_start = yday - datetime.timedelta(yday.day - 1)
+            day_check = pd.Timestamp.now()
+            if day_check.day <= 3:
+                period_end = now
             else:
-                metricsl[i] = str(metricsl[i]) + "%"
+                period_end =  yday
+            period_end = period_end.normalize().strftime("%d/%m/%Y")
+            period_start = first.strftime("%d/%m/%Y")
 
-        # Initialise the Actions and Insights Lists
-        actions_list = actions(client)
-        action = actions_list[2].pop()
-        insights = actions_list[1].pop()
-        wwd = actions_list[0].pop()
-
-        # Initialise the email
-        env = Environment(loader=FileSystemLoader('templates'))
-        template = env.get_template('email_template.html')
-
-        # Get the date
-        month_start = yday - datetime.timedelta(yday.day - 1)
-        day_check = pd.Timestamp.now()
-        if day_check.day <= 3:
-            period_end = now
-        else:
-            period_end =  yday
-        period_end = period_end.normalize().strftime("%d/%m/%Y")
-        period_start = first.strftime("%d/%m/%Y")
-
-        # Write and send the email
-        html = template.render(client=client, period_end=period_end, period_start=period_start, kpist_kpisl_kpisy=zip(kpist,kpisl,kpisy), spend_block=spend_block, budget=budget,
-                               metricst_metricsl_metricsy=zip(metricst,metricsl,metricsy), wwd=wwd, insights=insights, actions=action, compare=compare)
-        email(html, client, em)
+            # Write and send the email
+            html = template.render(client=client, period_end=period_end, period_start=period_start, kpist_kpisl_kpisy=zip(kpist,kpisl,kpisy), spend_block=spend_block, budget=budget,
+                                   metricst_metricsl_metricsy=zip(metricst,metricsl,metricsy), wwd=wwd, insights=insights, actions=action, compare=compare)
+            email(html, client, em)
     # Successfully Run
     return 0
 
@@ -127,9 +227,12 @@ def config():
 def emails():
     email = {}
     for column in ws_config:
-        email[column] = (ws_config.at[1, column])
+        email[column] = (ws_config.at[3, column])
     return email
 
+def get_dimension(client):
+    dimension = ws_config.at[3, client]
+    return dimension
 
 def budgets(client):
     budget = ws_config.at[2, client]
@@ -154,7 +257,7 @@ def data_ecom(client):
         first_yoy = (first - pd.DateOffset(years=1)).normalize()
         yday_yoy = (yday - pd.DateOffset(years=1)).normalize()
         # Create the filter for the data
-        mask = ((df['Date'] >= first) & (df['Date'] <= yday)) | (df['Date'] <= yday_yoy)
+        mask = ((df['Date'] >= first) & (df['Date'] <= yday)) | ((df['Date'] >= first_yoy) & (df['Date'] <= yday_yoy))
         df = df.loc[mask]
         year_grp = df.groupby(['Year'])
 
@@ -195,13 +298,15 @@ def data_ecom(client):
         tmp_df = pd.DataFrame(yoy, index=['Compare'])
         tmp_df = tmp_df.round(2)
         concat_df = pd.concat([new_df, tmp_df])
+        concat_df.replace([np.inf, -np.inf], 0, inplace=True)
         global compare
         compare = 'YoY'
 
     else:
         # MoM Dataset
-        current_year = date.today().year
-        mask = ((df['Year'] == current_year) & ((df['Month'] == current_month) | (df['Month'] == previous_month)))
+        first_mom = (first - pd.DateOffset(months=1)).normalize()
+        yday_mom = (yday - pd.DateOffset(months=1)).normalize()
+        mask = ((df['Date'] >= first) & (df['Date'] <= yday)) | ((df['Date'] >= first_mom) & (df['Date'] <= yday_mom))
         df = df.loc[mask]
 
         year_grp = df.groupby(['Month'])
@@ -256,7 +361,7 @@ def data_lead(client):
         first_yoy = (first - pd.DateOffset(years=1)).normalize()
         yday_yoy = (yday - pd.DateOffset(years=1)).normalize()
 
-        mask = ((df['Date'] >= first) & (df['Date'] <= yday)) | (df['Date'] <= yday_yoy)
+        mask = ((df['Date'] >= first) & (df['Date'] <= yday)) | ((df['Date'] >= first_yoy) & (df['Date'] <= yday_yoy))
         df = df.loc[mask]
 
         year_grp = df.groupby(['Year'])
@@ -291,12 +396,14 @@ def data_lead(client):
         tmp_df = pd.DataFrame(yoy, index=['Compare'])
         tmp_df = tmp_df.round(2)
         concat_df = pd.concat([new_df, tmp_df])
+        concat_df.replace([np.inf, -np.inf], 0, inplace=True)
         global compare
         compare = 'YoY'
     else:
         # MoM Dataset
-        current_year = date.today().year
-        mask = ((df['Year'] == current_year) & ((df['Month'] == current_month) | (df['Month'] == previous_month)))
+        first_mom = (first - pd.DateOffset(months=1)).normalize()
+        yday_mom = (yday - pd.DateOffset(months=1)).normalize()
+        mask = ((df['Date'] >= first) & (df['Date'] <= yday)) | ((df['Date'] >= first_mom) & (df['Date'] <= yday_mom))
         df = df.loc[mask]
 
         year_grp = df.groupby(['Month'])
@@ -329,10 +436,80 @@ def data_lead(client):
         tmp_df = pd.DataFrame(mom, index=['Compare'])
         tmp_df = tmp_df.round(2)
         concat_df = pd.concat([new_df, tmp_df])
+        concat_df.replace([np.inf, -np.inf], 0, inplace=True)
         compare = 'MoM'
     return concat_df
 
+def get_data_current(client, dimension):
+    ws = sh.worksheet(f"{client} Funnel Import")
+    df_raw = pd.DataFrame(ws.get_all_records())
+    filt = df_raw['Paid / Organic'] == 'Paid'
+    df = df_raw[filt]
+    df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
 
+    first_yoy = (first - pd.DateOffset(years=1)).normalize()
+    yday_yoy = (yday - pd.DateOffset(years=1)).normalize()
+
+    mask = ((df['Date'] >= first) & (df['Date'] <= yday))
+    current_df = df.loc[mask]
+
+    year_grp = current_df.groupby([dimension])
+
+    current_df[current_df.columns[9]] = pd.to_numeric(current_df[current_df.columns[9]])
+    impressions = year_grp[current_df.columns[9]].sum()
+    current_df[current_df.columns[10]] = pd.to_numeric(current_df[current_df.columns[10]])
+    clicks = year_grp[current_df.columns[10]].sum()
+    current_df[current_df.columns[11]] = pd.to_numeric(current_df[current_df.columns[11]])
+    cost = year_grp[current_df.columns[11]].sum()
+    current_df[current_df.columns[12]] = pd.to_numeric(current_df[current_df.columns[12]])
+    transactions = year_grp[current_df.columns[12]].sum()
+
+    current_df = pd.concat([impressions, clicks, cost, transactions], axis='columns', sort=False)
+
+    current_df['CTR'] = (current_df[current_df.columns[1]] / current_df[current_df.columns[0]] * 100)
+    current_df['CPC'] = (current_df[current_df.columns[2]] / current_df[current_df.columns[1]])
+    current_df['Conversion Rate'] = (current_df[current_df.columns[3]] / current_df[current_df.columns[2]] * 100)
+    current_df['CPA'] = (current_df[current_df.columns[2]] / current_df[current_df.columns[3]])
+    current_df = current_df.astype('float64')
+    current_df = current_df.round({current_df.columns[2]: 2, current_df.columns[4]: 2, current_df.columns[5]: 2, current_df.columns[6]: 2, current_df.columns[7]: 2})
+
+
+
+    return current_df
+def get_data_prev(client, dimension):
+    ws = sh.worksheet(f"{client} Funnel Import")
+    df_raw = pd.DataFrame(ws.get_all_records())
+    filt = df_raw['Paid / Organic'] == 'Paid'
+    df = df_raw[filt]
+    df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
+
+    first_yoy = (first - pd.DateOffset(years=1)).normalize()
+    yday_yoy = (yday - pd.DateOffset(years=1)).normalize()
+
+    mask = ((df['Date'] >= first_yoy) & (df['Date'] <= yday_yoy))
+    current_df = df.loc[mask]
+
+    year_grp = current_df.groupby([dimension])
+
+    current_df[current_df.columns[9]] = pd.to_numeric(current_df[current_df.columns[9]])
+    impressions = year_grp[current_df.columns[9]].sum()
+    current_df[current_df.columns[10]] = pd.to_numeric(current_df[current_df.columns[10]])
+    clicks = year_grp[current_df.columns[10]].sum()
+    current_df[current_df.columns[11]] = pd.to_numeric(current_df[current_df.columns[11]])
+    cost = year_grp[current_df.columns[11]].sum()
+    current_df[current_df.columns[12]] = pd.to_numeric(current_df[current_df.columns[12]])
+    transactions = year_grp[current_df.columns[12]].sum()
+
+    current_df = pd.concat([impressions, clicks, cost, transactions], axis='columns', sort=False)
+
+    current_df['CTR'] = (current_df[current_df.columns[1]] / current_df[current_df.columns[0]] * 100)
+    current_df['CPC'] = (current_df[current_df.columns[2]] / current_df[current_df.columns[1]])
+    current_df['Conversion Rate'] = (current_df[current_df.columns[3]] / current_df[current_df.columns[2]] * 100)
+    current_df['CPA'] = (current_df[current_df.columns[2]] / current_df[current_df.columns[3]])
+    current_df = current_df.astype('float64')
+    current_df = current_df.round({current_df.columns[2]: 2, current_df.columns[4]: 2, current_df.columns[5]: 2, current_df.columns[6]: 2, current_df.columns[7]: 2})
+
+    return current_df
 def kpis(data, client_type):
     if compare == "YoY":
         if client_type == "Lead Gen":
@@ -378,6 +555,20 @@ def costs(data):
     costs_results = [spend, run_rate]
     return costs_results
 
+def costs_dimension(data):
+    c_year = date.today().year
+    c_month = date.today().month
+    yday = (date.today().day) - 1
+    total_days = calendar.monthrange(c_year, c_month)[1]
+
+    total_cost = data[data.columns[2]].sum()
+    run_rate = (total_cost / yday) * total_days
+
+    total_cost = locale.currency(total_cost, grouping=True)
+    run_rate = locale.currency(run_rate, grouping=True)
+
+    costs_results = [total_cost, run_rate]
+    return costs_results
 
 def metrics(data):
     metrics_results = {}
@@ -434,7 +625,7 @@ def email(html, client, email_address):
         smtp.starttls()
         smtp.ehlo()
         smtp.login(wr_email, wr_password)
-        smtp.sendmail(wr_email, 'liam.driver@door4.com', msg.as_string())
+        smtp.sendmail(wr_email, 'door4_ppc_weekly_repo-aaaajm7y7wz2nbal346iqdyucu@door4.slack.com', msg.as_string())
 
 
 main()
