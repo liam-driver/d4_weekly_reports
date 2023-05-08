@@ -27,11 +27,13 @@ ws_ais = pd.DataFrame(ais.get_all_records())
 locale.setlocale(locale.LC_ALL, 'en_GB.UTF-8')
 # Initialise Time variables
 now = pd.Timestamp.now()
-if now.day <= 3:
-    now = now - MonthEnd(1)
+now = (now - pd.DateOffset(days=6)).normalize()
 first = now.replace(day=1).normalize()
 yday = (now - pd.DateOffset(days=1)).normalize()
-current_year = date.today().year
+if now.day <= 3:
+    now = now - MonthEnd(1)
+    yday = now
+current_year = now.year
 previous_year = current_year - 1
 current_month = calendar.month_name[now.month]
 previous_month = calendar.month_name[(now - pd.offsets.MonthEnd(1)).month]
@@ -45,7 +47,7 @@ def main():
     # Loop through the list and execute all the functions
     for client, client_type in clients.items():
         print(client)
-        if client == 'EGO' or client == 'NFG':
+        if client == 'EGO' or client == 'NFG' or client == 'Convatec' or client == 'Plumbs':
             # Get current dataset
             dimension = get_dimension(client)
             data_current = get_data_current(client, dimension)
@@ -56,7 +58,6 @@ def main():
             for d in dimensions:
                 if d == 'nan' or d == 'Unknown' or d == '':
                     dimensions.remove(d)
-            print(dimensions)
             conversion = []
             conversion_yoy = []
             cpl = []
@@ -89,7 +90,12 @@ def main():
             metricsl = list(metricsd.keys())
             metricsy = list(metricsd.values())
             for i in range(len(metricsy)):
-                metricsy[i] = str(metricsy[i]) + "%"
+                if metricsy[i] > 0:
+                    metricsy[i] = str(metricsy[i]) + "%"
+                    metricsy[i] = "+" + metricsy[i]
+                else:
+                    metricsy[i] = str(metricsy[i]) + "%"
+
             # Format the values to % and $z
             for i in range(len(metricst)):
                 if metricst[i] == 'Impressions' or metricst[i] == 'Clicks' or metricst[i] == 'Transactions' or metricst[i] == 'Conversions':
@@ -133,7 +139,7 @@ def main():
 
             # Write and send the email
             html = template.render(client=client, period_end=period_end, period_start=period_start, list=zip(dimensions, conversion, conversion_yoy, cpl,cpl_yoy), spend_block=spend_block,
-                                   budget=budget, wwd=wwd, insights=insights, actions=action, metricst_metricsl_metricsy=zip(metricst,metricsl,metricsy))
+                                   budget=budget, wwd=wwd, insights=insights, actions=action, metricst_metricsl_metricsy=zip(metricst,metricsl,metricsy), ml=metricsl, my=metricsy)
             email(html, client, em)
 
         else:
@@ -154,8 +160,13 @@ def main():
             if len(kpisl) < 2:
                 continue
             kpisy = list(kpisd.values())
+
             for i in range(len(kpisy)):
-                kpisy[i] = str(kpisy[i]) + "%"
+                if kpisy[i] > 0:
+                    kpisy[i] = str(kpisy[i]) + "%"
+                    kpisy[i] = "+" + kpisy[i]
+                else:
+                    kpisy[i] = str(kpisy[i]) + "%"
 
             for i in range(len(kpist)):
                 if kpist[i] == 'Impressions' or kpist[i] == 'Clicks' or kpist[i] == 'Conversions' or kpist[i] == 'Transactions':
@@ -174,8 +185,14 @@ def main():
             metricsd = metrics(data)
             metricsl = list(metricsd.keys())
             metricsy = list(metricsd.values())
+
             for i in range(len(metricsy)):
-                metricsy[i] = str(metricsy[i]) + "%"
+                if metricsy[i] > 0:
+                    metricsy[i] = str(metricsy[i]) + "%"
+                    metricsy[i] = "+" + metricsy[i]
+                else:
+                    metricsy[i] = str(metricsy[i]) + "%"
+
             # Format the values to % and $z
             for i in range(len(metricst)):
                 if metricst[i] == 'Impressions' or metricst[i] == 'Clicks' or metricst[i] =='Transactions' or metricst[i] =='Conversions':

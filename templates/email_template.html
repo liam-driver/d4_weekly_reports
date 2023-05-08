@@ -23,7 +23,7 @@
   <h2>KPIs:</h2>
   <ul>
     {% for kpist,kpisl,kpisy in kpist_kpisl_kpisy %}
-    <li> {{ kpist }}: {{ kpisl }} (± {{ kpisy }}) </li>
+    <li> {{ kpist }}: {{ kpisl }} ({{ kpisy }}) </li>
     {% endfor %}
   </ul>
   <br>
@@ -35,7 +35,7 @@
   <h2>Metrics:</h2>
   <ul>
     {% for metricst,metricsl,metricsy in metricst_metricsl_metricsy %}
-    <li> {{ metricst }}: {{ metricsl }} (± {{ metricsy }}) </li>
+    <li> {{ metricst }}: {{ metricsl }} ({{ metricsy }}) </li>
     {% endfor %}
       </ul>
   <br>

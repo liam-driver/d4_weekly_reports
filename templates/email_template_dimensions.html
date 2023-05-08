@@ -22,8 +22,9 @@
   <h2>KPIs:</h2>
   <ul>
     {% for d, c, cy, cp, cpy in list %}
-    <li> {{ d }}: {{ c }} (± {{ cy }}) Conversions @ {{ cp }} (±{{ cpy }}) CPL </li>
+    <li> {{ d }}: {{ c }} (± {{ cy }}) Conversions @ {{ cp }} ({{ cpy }}) CPL </li>
     {% endfor %}
+    <li> Overall: {{ ml[3] }} (± {{ my[3] }}) Conversions @ {{ ml[7] }} ({{ my[7] }}) CPL </li>
   </ul>
    <h2>Spend:</h2>
   <ul>
@@ -33,7 +34,7 @@
     <h2>Metrics:</h2>
   <ul>
     {% for metricst,metricsl,metricsy in metricst_metricsl_metricsy %}
-    <li> {{ metricst }}: {{ metricsl }} (± {{ metricsy }}) </li>
+    <li> {{ metricst }}: {{ metricsl }} ({{ metricsy }}) </li>
     {% endfor %}
       </ul>
   <br>
