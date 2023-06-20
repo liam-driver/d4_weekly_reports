@@ -27,7 +27,6 @@ ws_ais = pd.DataFrame(ais.get_all_records())
 locale.setlocale(locale.LC_ALL, 'en_GB.UTF-8')
 # Initialise Time variables
 now = pd.Timestamp.now()
-now = (now - pd.DateOffset(days=6)).normalize()
 first = now.replace(day=1).normalize()
 yday = (now - pd.DateOffset(days=1)).normalize()
 if now.day <= 3:
@@ -47,7 +46,7 @@ def main():
     # Loop through the list and execute all the functions
     for client, client_type in clients.items():
         print(client)
-        if client == 'EGO' or client == 'NFG' or client == 'Convatec' or client == 'Plumbs':
+        if client == 'EGO' or client == 'NFG' or client == 'Plumbs' or client == 'Skil':
             # Get current dataset
             dimension = get_dimension(client)
             data_current = get_data_current(client, dimension)
@@ -244,7 +243,7 @@ def config():
 def emails():
     email = {}
     for column in ws_config:
-        email[column] = (ws_config.at[3, column])
+        email[column] = (ws_config.at[1, column])
     return email
 
 def get_dimension(client):
@@ -262,8 +261,7 @@ def data_ecom(client):
     # Initialise raw datasheet through Google Sheets worksheet
     ws = sh.worksheet(f"{client} Funnel Import")
     df_raw = pd.DataFrame(ws.get_all_records())
-    filt = df_raw['Paid / Organic'] == 'Paid'
-    df = df_raw[filt]
+    df = df_raw
     df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
 
     # Test whether to do MoM or YoY
@@ -296,7 +294,7 @@ def data_ecom(client):
         # Get the calculated columns
         new_df['CTR'] = ((new_df[new_df.columns[1]] / new_df[new_df.columns[0]]) * 100)
         new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
-        new_df['Conversion Rate'] = ((new_df[new_df.columns[3]] / new_df[new_df.columns[2]]) * 100)
+        new_df['Conversion Rate'] = ((new_df[new_df.columns[3]] / new_df[new_df.columns[1]]) * 100)
         new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
         new_df['ROAS'] = ((new_df[new_df.columns[4]] / new_df[new_df.columns[2]]) * 100)
         new_df = new_df.astype('float64')
@@ -343,7 +341,7 @@ def data_ecom(client):
 
         new_df['CTR'] = ((new_df[new_df.columns[1]] / new_df[new_df.columns[0]]) * 100)
         new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
-        new_df['Conversion Rate'] = ((new_df[new_df.columns[3]] / new_df[new_df.columns[2]]) * 100)
+        new_df['Conversion Rate'] = ((new_df[new_df.columns[3]] / new_df[new_df.columns[1]]) * 100)
         new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
         new_df['ROAS'] = ((new_df[new_df.columns[4]] / new_df[new_df.columns[2]]) * 100)
 
@@ -367,8 +365,7 @@ def data_ecom(client):
 def data_lead(client):
     ws = sh.worksheet(f"{client} Funnel Import")
     df_raw = pd.DataFrame(ws.get_all_records())
-    filt = df_raw['Paid / Organic'] == 'Paid'
-    df = df_raw[filt]
+    df = df_raw
     df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
 
     min_date = df['Date'].min()
@@ -396,7 +393,7 @@ def data_lead(client):
 
         new_df['CTR'] = (new_df[new_df.columns[1]] / new_df[new_df.columns[0]] * 100)
         new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
-        new_df['Conversion Rate'] = (new_df[new_df.columns[3]] / new_df[new_df.columns[2]] * 100)
+        new_df['Conversion Rate'] = (new_df[new_df.columns[3]] / new_df[new_df.columns[1]] * 100)
         new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
         new_df = new_df.astype('float64')
         new_df = new_df.round({new_df.columns[2]: 2, new_df.columns[4]: 2, new_df.columns[5]: 2, new_df.columns[6]: 2, new_df.columns[7]: 2})
@@ -438,7 +435,7 @@ def data_lead(client):
 
         new_df['CTR'] = (new_df[new_df.columns[1]] / new_df[new_df.columns[0]] * 100)
         new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
-        new_df['Conversion Rate'] = (new_df[new_df.columns[3]] / new_df[new_df.columns[2]] * 100)
+        new_df['Conversion Rate'] = (new_df[new_df.columns[3]] / new_df[new_df.columns[1]] * 100)
         new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
 
         new_df = new_df.astype('float64')
@@ -460,8 +457,7 @@ def data_lead(client):
 def get_data_current(client, dimension):
     ws = sh.worksheet(f"{client} Funnel Import")
     df_raw = pd.DataFrame(ws.get_all_records())
-    filt = df_raw['Paid / Organic'] == 'Paid'
-    df = df_raw[filt]
+    df = df_raw
     df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
 
     first_yoy = (first - pd.DateOffset(years=1)).normalize()
@@ -496,8 +492,7 @@ def get_data_current(client, dimension):
 def get_data_prev(client, dimension):
     ws = sh.worksheet(f"{client} Funnel Import")
     df_raw = pd.DataFrame(ws.get_all_records())
-    filt = df_raw['Paid / Organic'] == 'Paid'
-    df = df_raw[filt]
+    df = df_raw
     df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
 
     first_yoy = (first - pd.DateOffset(years=1)).normalize()
@@ -642,7 +637,8 @@ def email(html, client, email_address):
         smtp.starttls()
         smtp.ehlo()
         smtp.login(wr_email, wr_password)
-        smtp.sendmail(wr_email, 'door4_ppc_weekly_repo-aaaajm7y7wz2nbal346iqdyucu@door4.slack.com', msg.as_string())
+        smtp.sendmail(wr_email, 'door4_ppc_weekly_repo-aaaajnlzxtgjgjvtz4mhgys5qu@door4.slack.com', msg.as_string()) # Official: door4_ppc_weekly_repo-aaaajnlzxtgjgjvtz4mhgys5qu@door4.slack.com
+        # Test: door4_ppc_weekly_repo-aaaajm7y7wz2nbal346iqdyucu@door4.slack.com
 
 
 main()
