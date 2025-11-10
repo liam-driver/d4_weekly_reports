@@ -6,6 +6,7 @@
 
 # Keep core files
 !main.py
+!main-test.py
 !requirements.txt
 !README.md
 !README

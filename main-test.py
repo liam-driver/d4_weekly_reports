@@ -390,7 +390,7 @@ def send_email(client, html):
         smtp.starttls()
         smtp.ehlo()
         smtp.login(wr_email, wr_password)
-        smtp.sendmail(wr_email, 'door4_ppc_weekly_repo-aaaajnlzxtgjgjvtz4mhgys5qu@door4.slack.com', msg.as_string()) # Official: door4_ppc_weekly_repo-aaaajnlzxtgjgjvtz4mhgys5qu@door4.slack.com  
+        smtp.sendmail(wr_email, 'door4_ppc_weekly_repo-aaaajm7y7wz2nbal346iqdyucu@door4.slack.com', msg.as_string()) # Official: door4_ppc_weekly_repo-aaaajnlzxtgjgjvtz4mhgys5qu@door4.slack.com  
         # Test: door4_ppc_weekly_repo-aaaajm7y7wz2nbal346iqdyucu@door4.slack.com
 
 main()
