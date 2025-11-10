@@ -1,817 +1,377 @@
 import gspread
 import smtplib
+from oauth2client.service_account import ServiceAccountCredentials
 import os
 import pandas as pd
-import datetime
-import calendar
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Environment, FileSystemLoader
 from datetime import date
 import numpy as np
 import locale
-import time
 from pandas.tseries.offsets import MonthEnd
-locale.setlocale(locale.LC_ALL, 'en_US')
-pd.options.mode.chained_assignment = None  # default='warn'
 
-# API call
-sa = gspread.service_account() # (filename=serene-lotus-379510-b3f9b3b23758)
-# Sheet
+pd.options.mode.chained_assignment = None  # default='warn'
+np.seterr(divide='ignore', invalid='ignore')
+
+scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scope)
+sa = gspread.authorize(creds)
+
+# Initial Config -- Declare Global Variables and initialise datasets (filename=serene-lotus-379510-b3f9b3b23758)
 sh = sa.open('Weekly Reports')
-# Config sheet
 cfg = sh.worksheet("Config")
 ws_config = pd.DataFrame(cfg.get_all_records())
-# Action & Insights Sheet
+print(ws_config)
+print(ws_config.index)
+print(ws_config.columns)
 ais = sh.worksheet("Actions & Insights")
 ws_ais = pd.DataFrame(ais.get_all_records())
 locale.setlocale(locale.LC_ALL, 'en_GB.UTF-8')
-# Initialise Time variables
+# Time Variables
 now = pd.Timestamp.now()
-first = now.replace(day=1).normalize()
-print(first)
-yday = (now - pd.DateOffset(days=1)).normalize()
-if now.day <= 3:
+yday = (now - pd.DateOffset(days=2)).normalize()
+if now.day <= 5:
     now = now - MonthEnd(1)
     yday = now
-current_year = now.year
-previous_year = current_year - 1
-current_month = calendar.month_name[now.month]
-previous_month = calendar.month_name[(now - pd.offsets.MonthEnd(1)).month]
-compare = ''
-
+first_of_current_month = now.replace(day=1).normalize()
+end_of_current_month = now + pd.offsets.MonthEnd(0)
 
 def main():
-    # Get account manager emails and client lists with type
-    clients = config()
-    # Loop through the list and execute all the functions
-    for client, client_type in clients.items():
-        print(client)
-        if client == 'EGO' or client == 'NFG' or client == 'Plumbs' or client == 'Skil':
-            # Get current dataset
-            dimension = get_dimension(client)
-            data_current = get_data_current(client, dimension)
-            # Get previous dataset
-            data_prev = get_data_prev(client, dimension)
-            # Get lists (Territory, Conversions, Conversions YoY, CPL, CPL YoY)
-            dimensions = data_current.index.tolist()
-            for d in dimensions:
-                if d == 'nan' or d == 'Unknown' or d == '':
-                    dimensions.remove(d)
-            conversion = []
-            conversion_yoy = []
-            cpl = []
-            cpl_yoy = []
+    # Initialise the client list
+    clients = init_clients()
 
-            for i in range(len(dimensions)):
-                cy = data_current.at[dimensions[i], data_current.columns[3]]
-                conversion.append(cy)
-                py = data_prev.at[dimensions[i], data_prev.columns[3]]
-                conversion_yoy.append(((cy - py) / py) * 100)
-
-                cy = data_current.at[dimensions[i], data_current.columns[7]]
-                cpl.append(cy)
-                py = data_prev.at[dimensions[i], data_prev.columns[7]]
-                cpl_yoy.append(((cy - py) / py) * 100)
-
-            #Metrics
-            if client_type == 'Lead Gen':
-                data = data_lead(client)
-                kpist = ["Conversions", "CPA"]
-                metricst = ["Impressions", "Clicks", "Cost", "Conversions", "CTR", "CPC", "Conversion Rate", "CPA"]
-
-            else:
-                data = data_ecom(client)
-                kpist = ["Transactions", "Transaction Revenue", "CPA", "ROAS"]
-                metricst = ["Impressions", "Clicks", "Cost", "Transactions", "Transaction Revenue", "CTR", "CPC", "Conversion Rate", "CPA", "ROAS"]
-
-            # Initialise the Metrics Lists
-            metricsd = metrics(data)
-            metricsl = list(metricsd.keys())
-            metricsy = list(metricsd.values())
-            for i in range(len(metricsy)):
-                if metricsy[i] > 0:
-                    metricsy[i] = str(metricsy[i]) + "%"
-                    metricsy[i] = "+" + metricsy[i]
-                else:
-                    metricsy[i] = str(metricsy[i]) + "%"
-
-            # Format the values to % and $z
-            for i in range(len(metricst)):
-                if metricst[i] == 'Impressions' or metricst[i] == 'Clicks' or metricst[i] == 'Transactions' or metricst[i] == 'Conversions':
-                    metricsl[i] = int(metricsl[i])
-                    metricsl[i] = f"{metricsl[i]:,d}"
-                elif metricst[i] == 'Cost' or metricst[i] == 'Transaction Revenue' or metricst[i] == 'CPC' or metricst[i] == 'CPA':
-                    metricsl[i] = locale.currency(metricsl[i], grouping=True)
-                else:
-                    metricsl[i] = str(metricsl[i]) + "%"
-
-            # Costs
-            spend_block = costs_dimension(data_current)
-            budget = budgets(client)
-
-            # Format the numbers
-            for i in range(len(cpl)):
-                conversion[i] = int(conversion[i])
-                conversion_yoy[i] = str(round(conversion_yoy[i], 2)) + "%"
-                conversion[i] = f"{conversion[i]:,d}"
-                cpl[i] = locale.currency(cpl[i], grouping=True)
-                cpl_yoy[i] = str(round(cpl_yoy[i], 2)) + "%"
-            # Initialise the email
-            env = Environment(loader=FileSystemLoader('templates'))
-            template = env.get_template('email_template_dimensions.html')
-
-            # Get the date
-            if client == 'CoverMyFurniture' or client == 'Fable & Plumb' or client == 'Plumbs':
-                plumbs_period_start = pd.to_datetime(ws_config.at[4, client])
-                plumbs_period_end = pd.to_datetime(ws_config.at[5, client])
-                plumbs_yday = (pd.Timestamp.now() - pd.DateOffset(days=1)).normalize()
-                if plumbs_yday > plumbs_period_end:
-                    plumbs_yday = plumbs_period_end
-                period_end = plumbs_yday.normalize().strftime("%d/%m/%Y")
-                period_start = plumbs_period_start.strftime("%d/%m/%Y")
-
-            else:
-                month_start = yday - datetime.timedelta(yday.day - 1)
-                day_check = pd.Timestamp.now()
-                if day_check.day <= 3:
-                    period_end = now
-                else:
-                    period_end = yday
-                period_end = period_end.normalize().strftime("%d/%m/%Y")
-                period_start = first.strftime("%d/%m/%Y")
-
-            # Actions and Insights
-            actions_list = actions(client)
-            action = actions_list[2].pop()
-            insights = actions_list[1].pop()
-            wwd = actions_list[0].pop()
-
-            # Write and send the email
-            html = template.render(client=client, period_end=period_end, period_start=period_start, list=zip(dimensions, conversion, conversion_yoy, cpl,cpl_yoy), spend_block=spend_block,
-                                   budget=budget, wwd=wwd, insights=insights, actions=action, metricst_metricsl_metricsy=zip(metricst,metricsl,metricsy), ml=metricsl, my=metricsy)
-            email(html, client)
-
+    for client in clients:
+        print(client['name'])
+        print(client['end_date'])
+        client['commentary'] = get_commentary(client)
+        if client["dimension"] == '':
+            # Create dataset (not dimension)
+            dataset = create_dataset(client)
+            report_data = get_report_data(dataset, client)
+            client['report_data'] = report_data
         else:
-            if client_type == 'Lead Gen':
-                data = data_lead(client)
-                kpist = ["Conversions", "CPA"]
-                metricst = ["Impressions", "Clicks", "Cost", "Conversions", "CTR", "CPC", "Conversion Rate", "CPA"]
+            dataset = create_dataset(client)
+            report_data = get_report_data(dataset, client)
+            client['report_data'] = report_data
 
-            else:
-                data = data_ecom(client)
-                kpist = ["Transactions", "Transaction Revenue", "CPA", "ROAS"]
-                metricst = ["Impressions", "Clicks", "Cost", "Transactions", "Transaction Revenue", "CTR", "CPC", "Conversion Rate", "CPA", "ROAS"]
+            dataset_dim = create_dataset_dim(client)
+            curr_df = dataset_dim[0]
+            prev_df = dataset_dim[1]
+            report_data_dim = get_report_data_dim(curr_df, prev_df)
+            client['report_data_dim'] = report_data_dim
+        client['run_rate'] = get_run_rate(client)
 
-
-            # Initialise the KPI lists
-            kpisd = kpis(data, client_type)
-            kpisl = list(kpisd.keys())
-            if len(kpisl) < 2:
-                continue
-            kpisy = list(kpisd.values())
-
-            for i in range(len(kpisy)):
-                if kpisy[i] > 0:
-                    kpisy[i] = str(kpisy[i]) + "%"
-                    kpisy[i] = "+" + kpisy[i]
-                else:
-                    kpisy[i] = str(kpisy[i]) + "%"
-
-            for i in range(len(kpist)):
-                if kpist[i] == 'Impressions' or kpist[i] == 'Clicks' or kpist[i] == 'Conversions' or kpist[i] == 'Transactions':
-                    kpisl[i] = int(kpisl[i])
-                    kpisl[i] = f"{kpisl[i]:,d}"
-                elif kpist[i] == 'Cost' or kpist[i] == 'Transaction Revenue' or kpist[i] == 'CPC' or kpist[i] == 'CPA':
-                    kpisl[i] = locale.currency(kpisl[i], grouping=True)
-                else:
-                    kpisl[i] = str(kpisl[i]) + "%"
-
-            # Initialise the Spend list
-            spend_block = costs(data)
-            budget = budgets(client)
-
-            # Initialise the Metrics Lists
-            metricsd = metrics(data)
-            metricsl = list(metricsd.keys())
-            metricsy = list(metricsd.values())
-
-            for i in range(len(metricsy)):
-                if metricsy[i] > 0:
-                    metricsy[i] = str(metricsy[i]) + "%"
-                    metricsy[i] = "+" + metricsy[i]
-                else:
-                    metricsy[i] = str(metricsy[i]) + "%"
-
-            # Format the values to % and $z
-            for i in range(len(metricst)):
-                if metricst[i] == 'Impressions' or metricst[i] == 'Clicks' or metricst[i] =='Transactions' or metricst[i] =='Conversions':
-                    metricsl[i] = int(metricsl[i])
-                    metricsl[i] = f"{metricsl[i]:,d}"
-                elif metricst[i] == 'Cost' or metricst[i] == 'Transaction Revenue' or metricst[i] =='CPC' or metricst[i] =='CPA':
-                    metricsl[i] = locale.currency(metricsl[i], grouping= True)
-                else:
-                    metricsl[i] = str(metricsl[i]) + "%"
-
-            # Initialise the Actions and Insights Lists
-            actions_list = actions(client)
-            action = actions_list[2].pop()
-            insights = actions_list[1].pop()
-            wwd = actions_list[0].pop()
-
-            # Initialise the email
-            env = Environment(loader=FileSystemLoader('templates'))
-            template = env.get_template('email_template.html')
-
-            # Get the date
-            if client == 'CoverMyFurniture' or client == 'Fable & Plumb' or client == 'Plumbs':
-                plumbs_period_start = pd.to_datetime(ws_config.at[4, client])
-                plumbs_period_end = pd.to_datetime(ws_config.at[5, client])
-                plumbs_yday = (pd.Timestamp.now() - pd.DateOffset(days=1)).normalize()
-                if plumbs_yday > plumbs_period_end:
-                    plumbs_yday = plumbs_period_end
-                period_end = plumbs_yday.normalize().strftime("%d/%m/%Y")
-                period_start = plumbs_period_start.strftime("%d/%m/%Y")
-
-            else:
-                month_start = yday - datetime.timedelta(yday.day - 1)
-                day_check = pd.Timestamp.now()
-                if day_check.day <= 3:
-                    period_end = now
-                else:
-                    period_end = yday
-                period_end = period_end.normalize().strftime("%d/%m/%Y")
-                period_start = first.strftime("%d/%m/%Y")
-
-            # Write and send the email
-            html = template.render(client=client, period_end=period_end, period_start=period_start, kpist_kpisl_kpisy=zip(kpist,kpisl,kpisy), spend_block=spend_block, budget=budget,
-                                   metricst_metricsl_metricsy=zip(metricst,metricsl,metricsy), wwd=wwd, insights=insights, actions=action, compare=compare)
-            email(html, client)
-            # Sleep to prevent API call limit
-            print('Sleeping for 20 seconds')
-            time.sleep(20)
-    # Successfully Run
+        email_template = create_email_template(client)
+        send_email(client, email_template)
     return 0
+        
 
-
-# Initialise the Client list w/ their ecommerce / lead gen status
-def config():
-    clients = {}
+# Initialise the client 
+def init_clients():
+    clients = []
     for column in ws_config:
-        clients[column] = ws_config.at[0, column]
+        clients_tmp = {}
+        clients_tmp['name'] = column
+        clients_tmp['account_type'] = ws_config.at[0, column]
+        clients_tmp['budget'] = ws_config.at[2, column]
+        clients_tmp['dimension'] = ws_config.at[3, column]
+        if ws_config.at[4, column] == '':
+            clients_tmp['start_date'] = first_of_current_month
+        else:
+            clients_tmp['start_date'] = pd.to_datetime(ws_config.at[4, column])
+        if ws_config.at[5, column] == '':
+            clients_tmp['end_date'] = end_of_current_month
+        else:
+            clients_tmp['end_date'] = pd.to_datetime(ws_config.at[5, column])
+        clients_tmp['start_date_string'] = clients_tmp['start_date'].normalize().strftime("%d/%m/%Y") 
+        if yday < clients_tmp['end_date']:
+            clients_tmp['end_date_string'] = yday.normalize().strftime("%d/%m/%Y")
+        else:
+            clients_tmp['end_date_string'] = clients_tmp['end_date'].normalize().strftime("%d/%m/%Y")
+        clients.append(clients_tmp)
+        month_curr = clients_tmp['start_date'].strftime('%B')
+        month_prev = (clients_tmp['start_date'] - pd.DateOffset(months=1)).normalize().strftime('%B')
     return clients
 
-# Initialise a list of all the email addresses
 
-def get_dimension(client):
-    dimension = ws_config.at[3, client]
-    return dimension
-
-def budgets(client):
-    budget = ws_config.at[2, client]
-    return budget
-
-
-# Get the data from the sheet and format it into dataset for the email // Ecommerce
-def data_ecom(client):
-
-    # Initialise raw datasheet through Google Sheets worksheet
-    ws = sh.worksheet(f"{client} Funnel Import")
-    df_raw = pd.DataFrame(ws.get_all_records())
-    df = df_raw
-    df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
-
-    # Test whether to do MoM or YoY
-    min_date = df['Date'].min()
-    prev = (first - pd.DateOffset(years=1)).normalize()
-    # Check to see if there is a custom period
-    if client == 'CoverMyFurniture' or client == 'Fable & Plumb' or client == 'Plumbs':
-        plumbs_period_start = pd.to_datetime(ws_config.at[4, client])
-        plumbs_period_end = pd.to_datetime(ws_config.at[5, client])
-        plumbs_yday = (pd.Timestamp.now() - pd.DateOffset(days=1)).normalize()
-        if plumbs_yday > plumbs_period_end:
-            plumbs_yday = plumbs_period_end
-        plumbs_period_start_yoy = (plumbs_period_start - pd.DateOffset(years=1)).normalize()
-        plumbs_period_end_yoy = (plumbs_period_end - pd.DateOffset(years=1)).normalize()
-        plumbs_yday_yoy = (plumbs_yday - pd.DateOffset(years=1)).normalize()
-        if plumbs_yday_yoy > plumbs_period_end_yoy:
-            plumbs_yday_yoy = plumbs_period_end_yoy
-
-        mask = ((df['Date'] >= plumbs_period_start) & (df['Date'] <= plumbs_yday)) | ((df['Date'] >= plumbs_period_start_yoy) & (df['Date'] <= plumbs_yday_yoy))
-        df = df.loc[mask]
-        year_grp = df.groupby(['Year'])
-
-        # Sum of the main columns
-        df[df.columns[9]] = pd.to_numeric(df[df.columns[9]])
-        impressions = year_grp[df.columns[9]].sum()
-        df[df.columns[10]] = pd.to_numeric(df[df.columns[10]])
-        clicks = year_grp[df.columns[10]].sum()
-        df[df.columns[11]] = pd.to_numeric(df[df.columns[11]])
-        cost = year_grp[df.columns[11]].sum()
-        df[df.columns[12]] = pd.to_numeric(df[df.columns[12]])
-        transactions = year_grp[df.columns[12]].sum()
-        df[df.columns[13]] = pd.to_numeric(df[df.columns[13]])
-        transaction_revenue = year_grp[df.columns[13]].sum()
-
-        # Concatenate the columns
-        new_df = pd.concat([impressions, clicks, cost, transactions, transaction_revenue], axis='columns', sort=False)
-
-        # Get the calculated columns
-        new_df['CTR'] = ((new_df[new_df.columns[1]] / new_df[new_df.columns[0]]) * 100)
-        new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
-        new_df['Conversion Rate'] = ((new_df[new_df.columns[3]] / new_df[new_df.columns[1]]) * 100)
-        new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
-        new_df['ROAS'] = ((new_df[new_df.columns[4]] / new_df[new_df.columns[2]]) * 100)
-        new_df = new_df.astype('float64')
-        new_df = new_df.round({new_df.columns[2]: 2, new_df.columns[4]: 2, new_df.columns[5]: 2, new_df.columns[6]: 2, new_df.columns[7]: 2, new_df.columns[8]: 2, new_df.columns[9]: 2})
-
-        # Create YoY Comparison Row
-        yoy = {}
-        current_year = date.today().year
-        previous_year = current_year - 1
-
-        for column in new_df:
-            cy = new_df.at[current_year, column]
-            py = new_df.at[previous_year, column]
-            yoy[column] = ((cy - py) / py) * 100
-
-        tmp_df = pd.DataFrame(yoy, index=['Compare'])
-        tmp_df = tmp_df.round(2)
-        concat_df = pd.concat([new_df, tmp_df])
-        concat_df.replace([np.inf, -np.inf], 0, inplace=True)
-        global compare
-        compare = 'YoY'
-        return concat_df
-
-    else:
-        if prev >= min_date:
-            # YoY Dataset
-            first_yoy = (first - pd.DateOffset(years=1)).normalize()
-            yday_yoy = (yday - pd.DateOffset(years=1)).normalize()
-            # Create the filter for the data
-            mask = ((df['Date'] >= first) & (df['Date'] <= yday)) | ((df['Date'] >= first_yoy) & (df['Date'] <= yday_yoy))
-            df = df.loc[mask]
-            year_grp = df.groupby(['Year'])
-
-            # Sum of the main columns
-            df[df.columns[9]] = pd.to_numeric(df[df.columns[9]])
-            impressions = year_grp[df.columns[9]].sum()
-            df[df.columns[10]] = pd.to_numeric(df[df.columns[10]])
-            clicks = year_grp[df.columns[10]].sum()
-            df[df.columns[11]] = pd.to_numeric(df[df.columns[11]])
-            cost = year_grp[df.columns[11]].sum()
-            df[df.columns[12]] = pd.to_numeric(df[df.columns[12]])
-            transactions = year_grp[df.columns[12]].sum()
-            df[df.columns[13]] = pd.to_numeric(df[df.columns[13]])
-            transaction_revenue = year_grp[df.columns[13]].sum()
-
-            # Concatenate the columns
-            new_df = pd.concat([impressions, clicks, cost, transactions, transaction_revenue], axis='columns', sort=False)
-
-            # Get the calculated columns
-            new_df['CTR'] = ((new_df[new_df.columns[1]] / new_df[new_df.columns[0]]) * 100)
-            new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
-            new_df['Conversion Rate'] = ((new_df[new_df.columns[3]] / new_df[new_df.columns[1]]) * 100)
-            new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
-            new_df['ROAS'] = ((new_df[new_df.columns[4]] / new_df[new_df.columns[2]]) * 100)
-            new_df = new_df.astype('float64')
-            new_df = new_df.round({new_df.columns[2]: 2, new_df.columns[4]: 2, new_df.columns[5]: 2, new_df.columns[6]: 2, new_df.columns[7]: 2, new_df.columns[8]: 2, new_df.columns[9]: 2})
-
-            # Create YoY Comparison Row
-            yoy = {}
-            current_year = date.today().year
-            previous_year = current_year - 1
-
-            for column in new_df:
-                cy = new_df.at[current_year, column]
-                py = new_df.at[previous_year, column]
-                yoy[column] = ((cy - py) / py) * 100
-
-            tmp_df = pd.DataFrame(yoy, index=['Compare'])
-            tmp_df = tmp_df.round(2)
-            concat_df = pd.concat([new_df, tmp_df])
-            concat_df.replace([np.inf, -np.inf], 0, inplace=True)
-            compare = 'YoY'
-
-        else:
-            # MoM Dataset
-            first_mom = (first - pd.DateOffset(months=1)).normalize()
-            yday_mom = (yday - pd.DateOffset(months=1)).normalize()
-            mask = ((df['Date'] >= first) & (df['Date'] <= yday)) | ((df['Date'] >= first_mom) & (df['Date'] <= yday_mom))
-            df = df.loc[mask]
-
-            year_grp = df.groupby(['Month'])
-
-            df[df.columns[9]] = pd.to_numeric(df[df.columns[9]])
-            impressions = year_grp[df.columns[9]].sum()
-            df[df.columns[10]] = pd.to_numeric(df[df.columns[10]])
-            clicks = year_grp[df.columns[10]].sum()
-            df[df.columns[11]] = pd.to_numeric(df[df.columns[11]])
-            cost = year_grp[df.columns[11]].sum()
-            df[df.columns[12]] = pd.to_numeric(df[df.columns[12]])
-            transactions = year_grp[df.columns[12]].sum()
-            df[df.columns[13]] = pd.to_numeric(df[df.columns[13]])
-            transaction_revenue = year_grp[df.columns[13]].sum()
-
-            new_df = pd.concat([impressions, clicks, cost, transactions, transaction_revenue], axis='columns', sort=False)
-
-            new_df['CTR'] = ((new_df[new_df.columns[1]] / new_df[new_df.columns[0]]) * 100)
-            new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
-            new_df['Conversion Rate'] = ((new_df[new_df.columns[3]] / new_df[new_df.columns[1]]) * 100)
-            new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
-            new_df['ROAS'] = ((new_df[new_df.columns[4]] / new_df[new_df.columns[2]]) * 100)
-
-            new_df = new_df.astype('float64')
-            new_df = new_df.round({new_df.columns[2]: 2, new_df.columns[4]: 2, new_df.columns[5]: 2, new_df.columns[6]: 2, new_df.columns[7]: 2, new_df.columns[8]: 2, new_df.columns[9]: 2})
-
-            mom = {}
-            for column in new_df:
-                cy = new_df.at[current_month, column]
-                py = new_df.at[previous_month, column]
-                mom[column] = ((cy - py) / py) * 100
-
-            tmp_df = pd.DataFrame(mom, index=['Compare'])
-            tmp_df = tmp_df.round(2)
-            concat_df = pd.concat([new_df, tmp_df])
-            compare = 'MoM'
-
-    return concat_df
-
-
-def data_lead(client):
-    ws = sh.worksheet(f"{client} Funnel Import")
-    df_raw = pd.DataFrame(ws.get_all_records())
-    df = df_raw
-    df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
-
-    min_date = df['Date'].min()
-    prev = (first - pd.DateOffset(years=1)).normalize()
-    if client == 'CoverMyFurniture' or client == 'Fable & Plumb' or client == 'Plumbs':
-        plumbs_period_start = pd.to_datetime(ws_config.at[4, client])
-        plumbs_period_end = pd.to_datetime(ws_config.at[5, client])
-        plumbs_yday = (pd.Timestamp.now() - pd.DateOffset(days=1)).normalize()
-        if plumbs_yday > plumbs_period_end:
-            plumbs_yday = plumbs_period_end
-        plumbs_period_start_yoy = (plumbs_period_start - pd.DateOffset(years=1)).normalize()
-        plumbs_period_end_yoy = (plumbs_period_end - pd.DateOffset(years=1)).normalize()
-        plumbs_yday_yoy = (plumbs_yday - pd.DateOffset(years=1)).normalize()
-        if plumbs_yday_yoy > plumbs_period_end_yoy:
-            plumbs_yday_yoy = plumbs_period_end_yoy
-
-        mask = ((df['Date'] >= plumbs_period_start) & (df['Date'] <= plumbs_yday)) | ((df['Date'] >= plumbs_period_start_yoy) & (df['Date'] <= plumbs_yday_yoy))
-        df = df.loc[mask]
-        year_grp = df.groupby(['Year'])
-
-        year_grp = df.groupby(['Year'])
-
-        df[df.columns[9]] = pd.to_numeric(df[df.columns[9]])
-        impressions = year_grp[df.columns[9]].sum()
-        df[df.columns[10]] = pd.to_numeric(df[df.columns[10]])
-        clicks = year_grp[df.columns[10]].sum()
-        df[df.columns[11]] = pd.to_numeric(df[df.columns[11]])
-        cost = year_grp[df.columns[11]].sum()
-        df[df.columns[12]] = pd.to_numeric(df[df.columns[12]])
-        transactions = year_grp[df.columns[12]].sum()
-
-        new_df = pd.concat([impressions, clicks, cost, transactions], axis='columns', sort=False)
-
-        new_df['CTR'] = (new_df[new_df.columns[1]] / new_df[new_df.columns[0]] * 100)
-        new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
-        new_df['Conversion Rate'] = (new_df[new_df.columns[3]] / new_df[new_df.columns[1]] * 100)
-        new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
-        new_df = new_df.astype('float64')
-        new_df = new_df.round({new_df.columns[2]: 2, new_df.columns[4]: 2, new_df.columns[5]: 2, new_df.columns[6]: 2, new_df.columns[7]: 2})
-
-        yoy = {}
-        current_year = date.today().year
-        previous_year = current_year - 1
-
-        for column in new_df:
-            cy = new_df.at[current_year, column]
-            py = new_df.at[previous_year, column]
-            yoy[column] = ((cy - py) / py) * 100
-
-        tmp_df = pd.DataFrame(yoy, index=['Compare'])
-        tmp_df = tmp_df.round(2)
-        concat_df = pd.concat([new_df, tmp_df])
-        concat_df.replace([np.inf, -np.inf], 0, inplace=True)
-        global compare
-        compare = 'YoY'
-        return concat_df
-
-    else:
-        if prev >= min_date:
-            # YoY Dataset
-            first_yoy = (first - pd.DateOffset(years=1)).normalize()
-            yday_yoy = (yday - pd.DateOffset(years=1)).normalize()
-
-            mask = ((df['Date'] >= first) & (df['Date'] <= yday)) | ((df['Date'] >= first_yoy) & (df['Date'] <= yday_yoy))
-            df = df.loc[mask]
-
-            year_grp = df.groupby(['Year'])
-
-            df[df.columns[9]] = pd.to_numeric(df[df.columns[9]])
-            impressions = year_grp[df.columns[9]].sum()
-            df[df.columns[10]] = pd.to_numeric(df[df.columns[10]])
-            clicks = year_grp[df.columns[10]].sum()
-            df[df.columns[11]] = pd.to_numeric(df[df.columns[11]])
-            cost = year_grp[df.columns[11]].sum()
-            df[df.columns[12]] = pd.to_numeric(df[df.columns[12]])
-            transactions = year_grp[df.columns[12]].sum()
-
-            new_df = pd.concat([impressions, clicks, cost, transactions], axis='columns', sort=False)
-
-            new_df['CTR'] = (new_df[new_df.columns[1]] / new_df[new_df.columns[0]] * 100)
-            new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
-            new_df['Conversion Rate'] = (new_df[new_df.columns[3]] / new_df[new_df.columns[1]] * 100)
-            new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
-            new_df = new_df.astype('float64')
-            new_df = new_df.round({new_df.columns[2]: 2, new_df.columns[4]: 2, new_df.columns[5]: 2, new_df.columns[6]: 2, new_df.columns[7]: 2})
-
-            yoy = {}
-            current_year = date.today().year
-            previous_year = current_year - 1
-
-            for column in new_df:
-                cy = new_df.at[current_year, column]
-                py = new_df.at[previous_year, column]
-                yoy[column] = ((cy - py) / py) * 100
-
-            tmp_df = pd.DataFrame(yoy, index=['Compare'])
-            tmp_df = tmp_df.round(2)
-            concat_df = pd.concat([new_df, tmp_df])
-            concat_df.replace([np.inf, -np.inf], 0, inplace=True)
-            compare = 'YoY'
-
-        else:
-            # MoM Dataset
-            first_mom = (first - pd.DateOffset(months=1)).normalize()
-            yday_mom = (yday - pd.DateOffset(months=1)).normalize()
-            mask = ((df['Date'] >= first) & (df['Date'] <= yday)) | ((df['Date'] >= first_mom) & (df['Date'] <= yday_mom))
-            df = df.loc[mask]
-
-            year_grp = df.groupby(['Month'])
-
-            df[df.columns[9]] = pd.to_numeric(df[df.columns[9]])
-            impressions = year_grp[df.columns[9]].sum()
-            df[df.columns[10]] = pd.to_numeric(df[df.columns[10]])
-            clicks = year_grp[df.columns[10]].sum()
-            df[df.columns[11]] = pd.to_numeric(df[df.columns[11]])
-            cost = year_grp[df.columns[11]].sum()
-            df[df.columns[12]] = pd.to_numeric(df[df.columns[12]])
-            transactions = year_grp[df.columns[12]].sum()
-
-            new_df = pd.concat([impressions, clicks, cost, transactions], axis='columns', sort=False)
-
-            new_df['CTR'] = (new_df[new_df.columns[1]] / new_df[new_df.columns[0]] * 100)
-            new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
-            new_df['Conversion Rate'] = (new_df[new_df.columns[3]] / new_df[new_df.columns[1]] * 100)
-            new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
-
-            new_df = new_df.astype('float64')
-            new_df = new_df.round({new_df.columns[2]: 2, new_df.columns[4]: 2, new_df.columns[5]: 2, new_df.columns[6]: 2, new_df.columns[7]: 2})
-
-            mom = {}
-            for column in new_df:
-                cy = new_df.at[current_month, column]
-                py = new_df.at[previous_month, column]
-                mom[column] = ((cy - py) / py) * 100
-
-            tmp_df = pd.DataFrame(mom, index=['Compare'])
-            tmp_df = tmp_df.round(2)
-            concat_df = pd.concat([new_df, tmp_df])
-            concat_df.replace([np.inf, -np.inf], 0, inplace=True)
-            compare = 'MoM'
-        return concat_df
-
-def get_data_current(client, dimension):
-    ws = sh.worksheet(f"{client} Funnel Import")
-    df_raw = pd.DataFrame(ws.get_all_records())
-    df = df_raw
-    df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
-
-    if client == 'CoverMyFurniture' or client == 'Fable & Plumb' or client == 'Plumbs':
-        plumbs_period_start = pd.to_datetime(ws_config.at[4, client])
-        plumbs_period_end = pd.to_datetime(ws_config.at[5, client])
-        plumbs_yday = (pd.Timestamp.now() - pd.DateOffset(days=1)).normalize()
-        if plumbs_yday > plumbs_period_end:
-            plumbs_yday = plumbs_period_end
-        mask = ((df['Date'] >= plumbs_period_start) & (df['Date'] <= plumbs_yday))
-        current_df = df.loc[mask]
-
-        year_grp = current_df.groupby([dimension])
-
-        current_df[current_df.columns[9]] = pd.to_numeric(current_df[current_df.columns[9]])
-        impressions = year_grp[current_df.columns[9]].sum()
-        current_df[current_df.columns[10]] = pd.to_numeric(current_df[current_df.columns[10]])
-        clicks = year_grp[current_df.columns[10]].sum()
-        current_df[current_df.columns[11]] = pd.to_numeric(current_df[current_df.columns[11]])
-        cost = year_grp[current_df.columns[11]].sum()
-        current_df[current_df.columns[12]] = pd.to_numeric(current_df[current_df.columns[12]])
-        transactions = year_grp[current_df.columns[12]].sum()
-
-        current_df = pd.concat([impressions, clicks, cost, transactions], axis='columns', sort=False)
-
-        current_df['CTR'] = (current_df[current_df.columns[1]] / current_df[current_df.columns[0]] * 100)
-        current_df['CPC'] = (current_df[current_df.columns[2]] / current_df[current_df.columns[1]])
-        current_df['Conversion Rate'] = (current_df[current_df.columns[3]] / current_df[current_df.columns[2]] * 100)
-        current_df['CPA'] = (current_df[current_df.columns[2]] / current_df[current_df.columns[3]])
-        current_df = current_df.astype('float64')
-        current_df = current_df.round({current_df.columns[2]: 2, current_df.columns[4]: 2, current_df.columns[5]: 2, current_df.columns[6]: 2, current_df.columns[7]: 2})
-
-        return current_df
-    else:
-        mask = ((df['Date'] >= first) & (df['Date'] <= yday))
-        current_df = df.loc[mask]
-
-        year_grp = current_df.groupby([dimension])
-
-        current_df[current_df.columns[9]] = pd.to_numeric(current_df[current_df.columns[9]])
-        impressions = year_grp[current_df.columns[9]].sum()
-        current_df[current_df.columns[10]] = pd.to_numeric(current_df[current_df.columns[10]])
-        clicks = year_grp[current_df.columns[10]].sum()
-        current_df[current_df.columns[11]] = pd.to_numeric(current_df[current_df.columns[11]])
-        cost = year_grp[current_df.columns[11]].sum()
-        current_df[current_df.columns[12]] = pd.to_numeric(current_df[current_df.columns[12]])
-        transactions = year_grp[current_df.columns[12]].sum()
-
-        current_df = pd.concat([impressions, clicks, cost, transactions], axis='columns', sort=False)
-
-        current_df['CTR'] = (current_df[current_df.columns[1]] / current_df[current_df.columns[0]] * 100)
-        current_df['CPC'] = (current_df[current_df.columns[2]] / current_df[current_df.columns[1]])
-        current_df['Conversion Rate'] = (current_df[current_df.columns[3]] / current_df[current_df.columns[2]] * 100)
-        current_df['CPA'] = (current_df[current_df.columns[2]] / current_df[current_df.columns[3]])
-        current_df = current_df.astype('float64')
-        current_df = current_df.round({current_df.columns[2]: 2, current_df.columns[4]: 2, current_df.columns[5]: 2, current_df.columns[6]: 2, current_df.columns[7]: 2})
-
-        return current_df
-def get_data_prev(client, dimension):
-    ws = sh.worksheet(f"{client} Funnel Import")
-    df_raw = pd.DataFrame(ws.get_all_records())
-    df = df_raw
-    df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
-
-    if client == 'CoverMyFurniture' or client == 'Fable & Plumb' or client == 'Plumbs':
-        plumbs_period_start = pd.to_datetime(ws_config.at[4, client])
-        plumbs_period_start = pd.to_datetime(plumbs_period_start)
-        plumbs_period_end = pd.to_datetime(ws_config.at[5, client])
-        plumbs_yday = (pd.Timestamp.now() - pd.DateOffset(days=1)).normalize()
-        if plumbs_yday > plumbs_period_end:
-            plumbs_yday = plumbs_period_end
-        plumbs_period_start_yoy = (plumbs_period_start - pd.DateOffset(years=1)).normalize()
-        plumbs_period_end_yoy = (plumbs_period_end - pd.DateOffset(years=1)).normalize()
-        plumbs_yday_yoy = (plumbs_yday - pd.DateOffset(years=1)).normalize()
-        if plumbs_yday_yoy > plumbs_period_end_yoy:
-            plumbs_yday_yoy = plumbs_period_end_yoy
-
-        mask = ((df['Date'] >= plumbs_period_start_yoy) & (df['Date'] <= plumbs_yday_yoy))
-        current_df = df.loc[mask]
-
-        year_grp = current_df.groupby([dimension])
-
-        current_df[current_df.columns[9]] = pd.to_numeric(current_df[current_df.columns[9]])
-        impressions = year_grp[current_df.columns[9]].sum()
-        current_df[current_df.columns[10]] = pd.to_numeric(current_df[current_df.columns[10]])
-        clicks = year_grp[current_df.columns[10]].sum()
-        current_df[current_df.columns[11]] = pd.to_numeric(current_df[current_df.columns[11]])
-        cost = year_grp[current_df.columns[11]].sum()
-        current_df[current_df.columns[12]] = pd.to_numeric(current_df[current_df.columns[12]])
-        transactions = year_grp[current_df.columns[12]].sum()
-
-        current_df = pd.concat([impressions, clicks, cost, transactions], axis='columns', sort=False)
-
-        current_df['CTR'] = (current_df[current_df.columns[1]] / current_df[current_df.columns[0]] * 100)
-        current_df['CPC'] = (current_df[current_df.columns[2]] / current_df[current_df.columns[1]])
-        current_df['Conversion Rate'] = (current_df[current_df.columns[3]] / current_df[current_df.columns[2]] * 100)
-        current_df['CPA'] = (current_df[current_df.columns[2]] / current_df[current_df.columns[3]])
-        current_df = current_df.astype('float64')
-        current_df = current_df.round({current_df.columns[2]: 2, current_df.columns[4]: 2, current_df.columns[5]: 2, current_df.columns[6]: 2, current_df.columns[7]: 2})
-
-        return current_df
-
-    else:
-        first_yoy = (first - pd.DateOffset(years=1)).normalize()
-        yday_yoy = (yday - pd.DateOffset(years=1)).normalize()
-
-        mask = ((df['Date'] >= first_yoy) & (df['Date'] <= yday_yoy))
-        current_df = df.loc[mask]
-
-        year_grp = current_df.groupby([dimension])
-
-        current_df[current_df.columns[9]] = pd.to_numeric(current_df[current_df.columns[9]])
-        impressions = year_grp[current_df.columns[9]].sum()
-        current_df[current_df.columns[10]] = pd.to_numeric(current_df[current_df.columns[10]])
-        clicks = year_grp[current_df.columns[10]].sum()
-        current_df[current_df.columns[11]] = pd.to_numeric(current_df[current_df.columns[11]])
-        cost = year_grp[current_df.columns[11]].sum()
-        current_df[current_df.columns[12]] = pd.to_numeric(current_df[current_df.columns[12]])
-        transactions = year_grp[current_df.columns[12]].sum()
-
-        current_df = pd.concat([impressions, clicks, cost, transactions], axis='columns', sort=False)
-
-        current_df['CTR'] = (current_df[current_df.columns[1]] / current_df[current_df.columns[0]] * 100)
-        current_df['CPC'] = (current_df[current_df.columns[2]] / current_df[current_df.columns[1]])
-        current_df['Conversion Rate'] = (current_df[current_df.columns[3]] / current_df[current_df.columns[2]] * 100)
-        current_df['CPA'] = (current_df[current_df.columns[2]] / current_df[current_df.columns[3]])
-        current_df = current_df.astype('float64')
-        current_df = current_df.round({current_df.columns[2]: 2, current_df.columns[4]: 2, current_df.columns[5]: 2, current_df.columns[6]: 2, current_df.columns[7]: 2})
-
-        return current_df
-def kpis(data, client_type):
-    if compare == "YoY":
-        if client_type == "Lead Gen":
-            kpis_results = {}
-            current_year = date.today().year
-            kpis_results[data.at[current_year, data.columns[3]]] = data.at["Compare", data.columns[3]]
-            kpis_results[data.at[current_year, "CPA"]] = data.at["Compare", "CPA"]
-        else:
-            kpis_results = {}
-            current_year = date.today().year
-            kpis_results[data.at[current_year, data.columns[3]]] = data.at["Compare", data.columns[3]]
-            kpis_results[data.at[current_year, data.columns[4]]] = data.at["Compare", data.columns[4]]
-            kpis_results[data.at[current_year, "CPA"]] = data.at["Compare", "CPA"]
-            kpis_results[data.at[current_year, "ROAS"]] = data.at["Compare", "ROAS"]
-    else:
-        if client_type == "Lead Gen":
-            kpis_results = {}
-            kpis_results[data.at[current_month, data.columns[3]]] = data.at["Compare", data.columns[3]]
-            kpis_results[data.at[current_month, "CPA"]] = data.at["Compare", "CPA"]
-        else:
-            kpis_results = {}
-            kpis_results[data.at[current_month, data.columns[3]]] = data.at["Compare", data.columns[3]]
-            kpis_results[data.at[current_month, data.columns[4]]] = data.at["Compare", data.columns[4]]
-            kpis_results[data.at[current_month, "CPA"]] = data.at["Compare", "CPA"]
-            kpis_results[data.at[current_month, "ROAS"]] = data.at["Compare", "ROAS"]
-    return kpis_results
-
-
-def costs(data):
-    c_year = date.today().year
-    c_month = date.today().month
-    yday = (date.today().day) - 1
-    total_days = calendar.monthrange(c_year, c_month)[1]
-    if compare == "YoY":
-        spend = data.at[current_year, data.columns[2]]
-    else:
-        spend = data.at[current_month, data.columns[2]]
-    run_rate = (spend / yday) * total_days
-
-    spend = locale.currency(spend, grouping=True)
-    run_rate = locale.currency(run_rate, grouping=True)
-
-    costs_results = [spend, run_rate]
-    return costs_results
-
-def costs_dimension(data):
-    c_year = date.today().year
-    c_month = date.today().month
-    yday = (date.today().day) - 1
-    total_days = calendar.monthrange(c_year, c_month)[1]
-
-    total_cost = data[data.columns[2]].sum()
-    run_rate = (total_cost / yday) * total_days
-
-    total_cost = locale.currency(total_cost, grouping=True)
-    run_rate = locale.currency(run_rate, grouping=True)
-
-    costs_results = [total_cost, run_rate]
-    return costs_results
-
-def metrics(data):
-    metrics_results = {}
-    current_year = date.today().year
-    if compare == "YoY":
-        for columns in data:
-            metrics_results[data.at[current_year, columns]] = data.at["Compare", columns]
-    else:
-        for columns in data:
-            metrics_results[data.at[current_month, columns]] = data.at["Compare", columns]
-    return metrics_results
-
-
-def actions(client):
+# Return list of commentary inputted on the google sheet
+def get_commentary(client):
     ws = sh.worksheet("Actions & Insights")
-    df_raw = pd.DataFrame(ws.get_all_records())
-    wwd = []
-    insights = []
-    actions = []
+    df = pd.DataFrame(ws.get_all_records())
+
+    commentary = {}
+    commentary['actions'] = []
+    commentary['insights'] = []
 
     for i in range(15):
-        wwd.append(df_raw.at[i, client])
-        insights.append(df_raw.at[(i + 15), client])
-        actions.append(df_raw.at[(i + 30), client])
-    while '' in wwd:
-        wwd.remove('')
-    while '' in insights:
-        insights.remove('')
-    while '' in actions:
-        actions.remove('')
-    zip_list = [[wwd], [insights], [actions]]
+        commentary['actions'].append(df.at[i, client['name']])
+        commentary['insights'].append(df.at[(i + 15), client['name']])
+    while '' in commentary['actions']:
+        commentary['actions'].remove('')
+    while '' in commentary['insights']:
+        commentary['insights'].remove('')
+    return commentary
+    
 
-    return zip_list
+# Return dictionary of data points
+def create_dataset(client):
+    client['report_type'] = 'normal'
+    ws = sh.worksheet(f"{client['name']} Funnel Import")
+    df = pd.DataFrame(ws.get_all_records())
+    df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
+    yoy_date_check = (client['start_date'] - pd.DateOffset(years=1)).normalize()
+    min_date_check = df[(df[df.columns[12]] != 0) & (df[df.columns[12]] != '')]
+    
+    # Minimum date in the dataset
+    min_date = min_date_check['Date'].min()
+    # If YoY data
+    if yoy_date_check >= min_date:
+        first_compare = (client['start_date'] - pd.DateOffset(years=1)).normalize()
+        yday_compare = (yday - pd.DateOffset(years=1)).normalize()
+        client['report_dates'] = 'YoY'
+        mask = ((df['Date'] >= client['start_date']) & (df['Date'] <= yday)) | ((df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
+        df = df.loc[mask]
+        group = df.groupby(['Year'])
+    else: 
+        first_compare = (client['start_date'] - pd.DateOffset(months=1)).normalize()
+        yday_compare = (yday - pd.DateOffset(months=1)).normalize()
+        client['report_dates'] = 'MoM'
+        mask = ((df['Date'] >= client['start_date']) & (df['Date'] <= yday)) | ((df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
+        df = df.loc[mask]
+        group = df.groupby(['Month'])
+    # Transform data into data set
+    if client['account_type'] == 'Lead Gen':
+        df = transform_dataset_leadgen(df, group)
+    else: 
+        df = transform_dataset_ecomm(df, group)
+    return(df)
+
+def create_dataset_dim(client):
+    client['report_type'] = 'normal'
+    ws = sh.worksheet(f"{client['name']} Funnel Import")
+    df = pd.DataFrame(ws.get_all_records())
+    df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
+    yoy_date_check = (client['start_date'] - pd.DateOffset(years=1)).normalize()
+    min_date_check = df[(df[df.columns[12]] != 0) & (df[df.columns[12]] != '')]
+    
+    # Minimum date in the dataset
+    min_date = min_date_check['Date'].min()
+    if (now - pd.DateOffset(days=2)).normalize() != yday:
+        yday_f = client['end_date']
+    else: 
+        yday_f = yday
+    # If YoY data
+    if yoy_date_check >= min_date:
+        first_compare = (client['start_date'] - pd.DateOffset(years=1)).normalize()
+        yday_compare = (yday_f - pd.DateOffset(years=1)).normalize()
+    else: 
+        first_compare = (client['start_date'] - pd.DateOffset(months=1)).normalize()
+        yday_compare = (yday_f - pd.DateOffset(months=1)).normalize()
+    # Transform data into data set 
+    if client['account_type'] == 'Lead Gen': 
+        mask = ((df['Date'] >= client['start_date']) & (df['Date'] <= yday_f))
+        curr_df = df.loc[mask]
+        group = curr_df.groupby(client['dimension'])
+        curr_df = transform_dataset_leadgen(curr_df, group)
+        curr_df = curr_df.iloc[:, 3:4].join(curr_df.loc[:, ['CPA']])
+
+        mask = ((df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
+        prev_df = df.loc[mask]
+        group = prev_df.groupby(client['dimension'])
+        prev_df = transform_dataset_leadgen(prev_df, group)
+        prev_df = prev_df.iloc[:, 3:4].join(prev_df.loc[:, ['CPA']])
+    else: 
+        mask = ((df['Date'] >= client['start_date']) & (df['Date'] <= yday_f))
+        curr_df = df.loc[mask]
+        group = curr_df.groupby(client['dimension'])
+        curr_df = transform_dataset_ecomm(curr_df, group)
+        curr_df = curr_df.iloc[:, 3:4].join(curr_df.loc[:, ['ROAS']])
+
+        mask = ((df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
+        prev_df = df.loc[mask]
+        group = prev_df.groupby(client['dimension'])
+        prev_df = transform_dataset_ecomm(prev_df, group)
+        prev_df = prev_df.iloc[:, 3:4].join(prev_df.loc[:, ['ROAS']])
+    curr_df.replace([np.nan, np.inf], '-', inplace=True)
+    prev_df.replace([np.nan, np.inf], '-', inplace=True)
+    df = [curr_df, prev_df]
+    return(curr_df, prev_df)
+
+    
+# Transform dataset into ecomm template
+def transform_dataset_ecomm(df, group):
+    # Sum of the main columns
+    df[df.columns[9]] = pd.to_numeric(df[df.columns[9]])
+    impressions = group[df.columns[9]].sum()
+    df[df.columns[10]] = pd.to_numeric(df[df.columns[10]])
+    clicks = group[df.columns[10]].sum()
+    df[df.columns[11]] = pd.to_numeric(df[df.columns[11]])
+    cost = group[df.columns[11]].sum()
+    df[df.columns[12]] = pd.to_numeric(df[df.columns[12]])
+    transactions = group[df.columns[12]].sum()
+    df[df.columns[13]] = pd.to_numeric(df[df.columns[13]])
+    transaction_revenue = group[df.columns[13]].sum()
+
+    # Concatenate the columns
+    new_df = pd.concat([impressions, clicks, cost, transactions, transaction_revenue], axis='columns', sort=False)
+
+    # Get the calculated columns
+    new_df['CTR'] = ((new_df[new_df.columns[1]] / new_df[new_df.columns[0]]) * 100)
+    new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
+    new_df['Conversion Rate'] = ((new_df[new_df.columns[3]] / new_df[new_df.columns[1]]) * 100)
+    new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
+    new_df['ROAS'] = ((new_df[new_df.columns[4]] / new_df[new_df.columns[2]]) * 100)
+    new_df = new_df.astype('float64')
+    new_df = new_df.round({new_df.columns[2]: 2, new_df.columns[4]: 2, new_df.columns[5]: 2, new_df.columns[6]: 2, new_df.columns[7]: 2, new_df.columns[8]: 2, new_df.columns[9]: 2})
+
+    new_df = new_df.rename(columns={new_df.columns[0]: 'Impressions'})
+    new_df = new_df.rename(columns={new_df.columns[1]: 'Clicks'})
+    new_df = new_df.rename(columns={new_df.columns[2]: 'Cost'})
+    new_df = new_df.rename(columns={new_df.columns[3]: 'Transactions'})
+    new_df = new_df.rename(columns={new_df.columns[4]: 'Transaction Revenue'})
+    return new_df
+
+# Transform dataset into lead gen template
+def transform_dataset_leadgen(df, group):
+    # Sum of the main columns
+    df[df.columns[9]] = pd.to_numeric(df[df.columns[9]])
+    impressions = group[df.columns[9]].sum()
+    df[df.columns[10]] = pd.to_numeric(df[df.columns[10]])
+    clicks = group[df.columns[10]].sum()
+    df[df.columns[11]] = pd.to_numeric(df[df.columns[11]])
+    cost = group[df.columns[11]].sum()
+    df[df.columns[12]] = pd.to_numeric(df[df.columns[12]])
+    transactions = group[df.columns[12]].sum()
+
+    new_df = pd.concat([impressions, clicks, cost, transactions], axis='columns', sort=False)
+
+    new_df['CTR'] = (new_df[new_df.columns[1]] / new_df[new_df.columns[0]] * 100)
+    new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
+    new_df['Conversion Rate'] = (new_df[new_df.columns[3]] / new_df[new_df.columns[1]] * 100)
+    new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
+    new_df = new_df.astype('float64')
+    new_df = new_df.round({new_df.columns[2]: 2, new_df.columns[4]: 2, new_df.columns[5]: 2, new_df.columns[6]: 2, new_df.columns[7]: 2})
+    new_df = new_df.rename(columns={new_df.columns[0]: 'Impressions'})
+    new_df = new_df.rename(columns={new_df.columns[1]: 'Clicks'})
+    new_df = new_df.rename(columns={new_df.columns[2]: 'Cost'})
+    new_df = new_df.rename(columns={new_df.columns[3]: 'Conversions'})
+
+    return new_df
+
+# Convert Data set into object dictionary
+def get_report_data(df,client):
+    report_data = []
+
+    for column in df:
+        report_data_tmp = {}
+        report_data_tmp['field'] = column
+        if client['report_dates'] == 'MoM':
+            cmp_curr = client['start_date'].strftime('%B')
+            cmp_prev = (client['start_date'] - pd.DateOffset(months=1)).normalize().strftime('%B')
+        else:
+            cmp_curr = 2025
+            cmp_prev = 2024
+        report_data_tmp['prev'] = df.at[cmp_prev, column]
+        report_data_tmp['current'] = df.at[cmp_curr, column]
+        report_data_tmp['compare'] = round(((report_data_tmp['current'] - report_data_tmp['prev']) / report_data_tmp['prev']) * 100, 2)
+        print(report_data_tmp)
+        if report_data_tmp['compare'] == float('nan') or report_data_tmp['compare'] == float('inf'):
+            report_data_tmp['compare'] = '-'
+        # Format Data to be readable 
+        if report_data_tmp['field'] == 'Impressions' or report_data_tmp['field'] == 'Clicks' or report_data_tmp['field'] == 'Transactions' or report_data_tmp['field'] == 'Conversions':
+            report_data_tmp['prev'] = int(report_data_tmp['prev'])
+            report_data_tmp['current'] = int(report_data_tmp['current'])
+            report_data_tmp['prev'] = f"{report_data_tmp['prev']:,d}"
+            report_data_tmp['current'] = f"{report_data_tmp['current']:,d}"
+        elif report_data_tmp['field'] == 'Transaction Revenue' or report_data_tmp['field'] == 'CPC' or report_data_tmp['field'] == 'CPA':
+            report_data_tmp['prev'] = locale.currency(report_data_tmp['prev'], grouping=True)
+            report_data_tmp['current'] = locale.currency(report_data_tmp['current'], grouping=True)
+        elif report_data_tmp['field'] == 'Cost' or report_data_tmp['field'] == 'Cost (*)':
+            pass
+        else:
+            report_data_tmp['prev'] = str(report_data_tmp['prev']) + "%"
+            report_data_tmp['current'] = str(report_data_tmp['current']) + "%"
+        if isinstance(report_data_tmp['compare'], (str, np.str_)):
+            report_data_tmp['compare'] = str(report_data_tmp['compare']) + "%"
+        elif report_data_tmp['compare'] > 0:
+            report_data_tmp['compare'] = str(report_data_tmp['compare']) + "%"
+            report_data_tmp['compare'] = "+" + report_data_tmp['compare']
+        else:
+            report_data_tmp['compare'] = str(report_data_tmp['compare']) + "%"
+        report_data.append(report_data_tmp)
+    return report_data
 
 
-def email(html, client):
+def get_report_data_dim(curr_df, prev_df):
+    dim_data = []
+    # loop through dimensions
+        # loop through metrics
+    for index, row in curr_df.iterrows():
+        dim_data_tmp = {}
+        dim_data_tmp['dim_name'] = index
+        report_data = []
+        for column in curr_df:
+            report_data_tmp = {}
+            report_data_tmp['field'] = column
+            try:
+                report_data_tmp['prev'] = prev_df.at[index ,column]
+            except KeyError:
+                report_data_tmp['prev'] = '-'
+            report_data_tmp['current'] = curr_df.at[index ,column]
+            if report_data_tmp['prev'] == '-' or report_data_tmp['current'] == '-':
+                report_data_tmp['compare'] = '-'
+            else:
+                report_data_tmp['compare'] = round(((report_data_tmp['current'] - report_data_tmp['prev']) / report_data_tmp['prev']) * 100, 2)
+                
+            # Format Data to be readable 
+            if report_data_tmp['field'] == 'ROAS':
+                if report_data_tmp['prev'] != '-':
+                    report_data_tmp['prev'] = str(report_data_tmp['prev']) + "%"
+                if report_data_tmp['current'] != '-':
+                    report_data_tmp['current'] = str(report_data_tmp['current']) + "%"
+            elif report_data_tmp['field'] == 'CPA':
+                if report_data_tmp['prev'] != '-':
+                    report_data_tmp['prev'] = locale.currency(report_data_tmp['prev'], grouping=True)
+                if report_data_tmp['current'] != '-':
+                    report_data_tmp['current'] = locale.currency(report_data_tmp['current'], grouping=True)
+            else:
+                if report_data_tmp['prev'] != '-':
+                    report_data_tmp['prev'] = int(report_data_tmp['prev'])
+                    report_data_tmp['prev'] = f"{report_data_tmp['prev']:,d}"
+                if report_data_tmp['current'] != '-':    
+                    report_data_tmp['current'] = int(report_data_tmp['current'])
+                    report_data_tmp['current'] = f"{report_data_tmp['current']:,d}"
+            if report_data_tmp['compare'] != '-':
+                if report_data_tmp['compare'] > 0:
+                    report_data_tmp['compare'] = str(report_data_tmp['compare']) + "%"
+                    report_data_tmp['compare'] = "+" + report_data_tmp['compare']
+                else:
+                    report_data_tmp['compare'] = str(report_data_tmp['compare']) + "%"
+            report_data.append(report_data_tmp)
+        dim_data_tmp['report_data'] = report_data
+        dim_data.append(dim_data_tmp)
+    return dim_data
+
+def get_run_rate(client):
+    spend = float(client['report_data'][2]['current'])
+    day_diff_yday = ((yday - client['start_date']).days)
+    day_diff_month = ((client['end_date'] - client['start_date']).days) + 1
+    run_rate = (spend / day_diff_yday) * day_diff_month
+    run_rate = locale.currency(run_rate, grouping=True)
+    client['report_data'][2]['current'] = locale.currency(client['report_data'][2]['current'], grouping=True)
+    return(run_rate)
+
+# Input data into email template
+def create_email_template(client):
+    env = Environment(loader=FileSystemLoader('templates'))
+    template = env.get_template('email_template_2025.html')
+    html_email = template.render(client=client)
+    return(html_email)
+
+
+# Send email
+def send_email(client, html):
     # Define email & password for sender email
     wr_email = os.environ.get('WEEKLY_REPORTS_EMAIL')
     wr_password = os.environ.get('WEEKLY_REPORTS_PASSWORD')
@@ -819,7 +379,7 @@ def email(html, client):
     # Create a message object
     msg = MIMEMultipart()
     msg['From'] = wr_email
-    msg['Subject'] = f"{client} Weekly Report"
+    msg['Subject'] = f"{client['name']} Weekly Report"
 
     # Add the HTML body to the message
     body = MIMEText(html, 'html')
@@ -831,8 +391,7 @@ def email(html, client):
         smtp.starttls()
         smtp.ehlo()
         smtp.login(wr_email, wr_password)
-        smtp.sendmail(wr_email, 'door4_ppc_weekly_repo-aaaajm7y7wz2nbal346iqdyucu@door4.slack.com', msg.as_string()) # Official: door4_ppc_weekly_repo-aaaajnlzxtgjgjvtz4mhgys5qu@door4.slack.com
+        smtp.sendmail(wr_email, 'door4_ppc_weekly_repo-aaaajm7y7wz2nbal346iqdyucu@door4.slack.com', msg.as_string()) # Official: door4_ppc_weekly_repo-aaaajnlzxtgjgjvtz4mhgys5qu@door4.slack.com  
         # Test: door4_ppc_weekly_repo-aaaajm7y7wz2nbal346iqdyucu@door4.slack.com
-
 
 main()

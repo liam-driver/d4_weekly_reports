@@ -8,11 +8,6 @@
   <p> This report has been generated with {{ client.report_dates }} data </p>
   <br>
   <h2>BAU Update</h2>
-  <ul>
-    {% for action in client.commentary.actions %}
-      <li>{{ action }}</li>
-    {% endfor %}
-  </ul>
   <br>
   <h2>WIP:</h2>
   <br>
@@ -49,13 +44,5 @@
     <li> Run Rate: {{ client.run_rate }} </li>
     <li> Budget: {{ client.budget }} </li>
   </ul>
-  <br>
-  <h2>Metrics:</h2>
-  <ul>
-    {% for field in client.report_data %}
-    <li> {{ field.field }}: {{ field.current }} ({{ field.compare }}) </li>
-    {% endfor %}
-      </ul>
-  <br>
 </body>
 </html>
