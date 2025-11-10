@@ -1,5 +1,6 @@
 import gspread
 import smtplib
+import json
 from oauth2client.service_account import ServiceAccountCredentials
 import os
 import pandas as pd
@@ -22,9 +23,6 @@ sa = gspread.authorize(creds)
 sh = sa.open('Weekly Reports')
 cfg = sh.worksheet("Config")
 ws_config = pd.DataFrame(cfg.get_all_records())
-print(ws_config)
-print(ws_config.index)
-print(ws_config.columns)
 ais = sh.worksheet("Actions & Insights")
 ws_ais = pd.DataFrame(ais.get_all_records())
 locale.setlocale(locale.LC_ALL, 'en_GB.UTF-8')
@@ -43,7 +41,6 @@ def main():
 
     for client in clients:
         print(client['name'])
-        print(client['end_date'])
         client['commentary'] = get_commentary(client)
         if client["dimension"] == '':
             # Create dataset (not dimension)
@@ -275,7 +272,6 @@ def get_report_data(df,client):
         report_data_tmp['prev'] = df.at[cmp_prev, column]
         report_data_tmp['current'] = df.at[cmp_curr, column]
         report_data_tmp['compare'] = round(((report_data_tmp['current'] - report_data_tmp['prev']) / report_data_tmp['prev']) * 100, 2)
-        print(report_data_tmp)
         if report_data_tmp['compare'] == float('nan') or report_data_tmp['compare'] == float('inf'):
             report_data_tmp['compare'] = '-'
         # Format Data to be readable 
@@ -373,8 +369,11 @@ def create_email_template(client):
 # Send email
 def send_email(client, html):
     # Define email & password for sender email
-    wr_email = os.environ.get('WEEKLY_REPORTS_EMAIL')
-    wr_password = os.environ.get('WEEKLY_REPORTS_PASSWORD')
+    with open("secrets.json","r") as f:
+        secrets = json.load(f)
+
+    wr_email = secrets["email"]
+    wr_password = secrets["password"]
 
     # Create a message object
     msg = MIMEMultipart()
