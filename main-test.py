@@ -81,7 +81,6 @@ def init_clients():
         clients_tmp['dashboard'] = ws_config.at[1, column]
         clients_tmp['budget'] = ws_config.at[2, column]
         clients_tmp['dimension'] = ws_config.at[3, column]
-        print(clients_tmp)
         clients_tmp['start_date'] = first_of_current_month
         clients_tmp['end_date'] = end_of_current_month
         clients_tmp['start_date_string'] = clients_tmp['start_date'].normalize().strftime("%d/%m/%Y") 
