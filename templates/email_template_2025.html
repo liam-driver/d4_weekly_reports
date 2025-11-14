@@ -5,18 +5,14 @@
 </head>
 <body>
   <h1>{{ client.name }} Weekly PPC Report ({{ client.start_date_string }} - {{ client.end_date_string }})</h1>
-  <p> This report has been generated with {{ client.report_dates }} data </p>
+  <p><i>This report has been generated with {{ client.report_dates }} data</i></p>
+  <p><b>Live Dashboard Link: {{client.dashboard}}</b></p>
   <br>
   <h2>BAU Update</h2>
   <br>
   <h2>WIP:</h2>
   <br>
   <h2>Insights: </h2>
-  <ul>
-    {% for insight in client.commentary.insights %}
-      <li>{{ insight }}</li>
-    {% endfor %}
-  </ul>
   <br>
   <h2>KPIs:</h2>
   {% if client.dimension == ''  %}

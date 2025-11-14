@@ -23,8 +23,6 @@ sa = gspread.authorize(creds)
 sh = sa.open('Weekly Reports')
 cfg = sh.worksheet("Config")
 ws_config = pd.DataFrame(cfg.get_all_records())
-ais = sh.worksheet("Actions & Insights")
-ws_ais = pd.DataFrame(ais.get_all_records())
 locale.setlocale(locale.LC_ALL, 'en_GB.UTF-8')
 # Time Variables
 now = pd.Timestamp.now()
@@ -41,7 +39,6 @@ def main():
 
     for client in clients:
         print(client['name'])
-        client['commentary'] = get_commentary(client)
         if client["dimension"] == '':
             # Create dataset (not dimension)
             dataset = create_dataset(client)
@@ -62,7 +59,17 @@ def main():
         email_template = create_email_template(client)
         send_email(client, email_template)
     return 0
-        
+
+def safe_div(num, den, multiplier=1.0, default=0.0):
+    # pandas Series / DataFrame path
+    if isinstance(num, (pd.Series, pd.DataFrame)) or isinstance(den, (pd.Series, pd.DataFrame)):
+        den = den.replace(0, np.nan)
+        result = (num / den) * multiplier
+        return result.fillna(default)
+    # scalar path
+    if den == 0 or pd.isna(den) or pd.isna(num):
+        return default
+    return (num / den) * multiplier
 
 # Initialise the client 
 def init_clients():
@@ -71,16 +78,12 @@ def init_clients():
         clients_tmp = {}
         clients_tmp['name'] = column
         clients_tmp['account_type'] = ws_config.at[0, column]
+        clients_tmp['dashboard'] = ws_config.at[1, column]
         clients_tmp['budget'] = ws_config.at[2, column]
         clients_tmp['dimension'] = ws_config.at[3, column]
-        if ws_config.at[4, column] == '':
-            clients_tmp['start_date'] = first_of_current_month
-        else:
-            clients_tmp['start_date'] = pd.to_datetime(ws_config.at[4, column])
-        if ws_config.at[5, column] == '':
-            clients_tmp['end_date'] = end_of_current_month
-        else:
-            clients_tmp['end_date'] = pd.to_datetime(ws_config.at[5, column])
+        print(clients_tmp)
+        clients_tmp['start_date'] = first_of_current_month
+        clients_tmp['end_date'] = end_of_current_month
         clients_tmp['start_date_string'] = clients_tmp['start_date'].normalize().strftime("%d/%m/%Y") 
         if yday < clients_tmp['end_date']:
             clients_tmp['end_date_string'] = yday.normalize().strftime("%d/%m/%Y")
@@ -89,27 +92,7 @@ def init_clients():
         clients.append(clients_tmp)
         month_curr = clients_tmp['start_date'].strftime('%B')
         month_prev = (clients_tmp['start_date'] - pd.DateOffset(months=1)).normalize().strftime('%B')
-    return clients
-
-
-# Return list of commentary inputted on the google sheet
-def get_commentary(client):
-    ws = sh.worksheet("Actions & Insights")
-    df = pd.DataFrame(ws.get_all_records())
-
-    commentary = {}
-    commentary['actions'] = []
-    commentary['insights'] = []
-
-    for i in range(15):
-        commentary['actions'].append(df.at[i, client['name']])
-        commentary['insights'].append(df.at[(i + 15), client['name']])
-    while '' in commentary['actions']:
-        commentary['actions'].remove('')
-    while '' in commentary['insights']:
-        commentary['insights'].remove('')
-    return commentary
-    
+    return clients    
 
 # Return dictionary of data points
 def create_dataset(client):
@@ -117,11 +100,9 @@ def create_dataset(client):
     ws = sh.worksheet(f"{client['name']} Funnel Import")
     df = pd.DataFrame(ws.get_all_records())
     df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
-    yoy_date_check = (client['start_date'] - pd.DateOffset(years=1)).normalize()
-    min_date_check = df[(df[df.columns[12]] != 0) & (df[df.columns[12]] != '')]
-    
+    yoy_date_check = (client['start_date'] - pd.DateOffset(years=1)).normalize()    
     # Minimum date in the dataset
-    min_date = min_date_check['Date'].min()
+    min_date = df['Date'].min()
     # If YoY data
     if yoy_date_check >= min_date:
         first_compare = (client['start_date'] - pd.DateOffset(years=1)).normalize()
@@ -214,11 +195,31 @@ def transform_dataset_ecomm(df, group):
     new_df = pd.concat([impressions, clicks, cost, transactions, transaction_revenue], axis='columns', sort=False)
 
     # Get the calculated columns
-    new_df['CTR'] = ((new_df[new_df.columns[1]] / new_df[new_df.columns[0]]) * 100)
-    new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
-    new_df['Conversion Rate'] = ((new_df[new_df.columns[3]] / new_df[new_df.columns[1]]) * 100)
-    new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
-    new_df['ROAS'] = ((new_df[new_df.columns[4]] / new_df[new_df.columns[2]]) * 100)
+    new_df['CTR'] = safe_div(
+        new_df[new_df.columns[1]],
+        new_df[new_df.columns[0]],
+        multiplier = 100
+    )
+    new_df['CPC'] = safe_div(
+        new_df[new_df.columns[2]],
+        new_df[new_df.columns[1]],
+        multiplier = 1
+    ) 
+    new_df['Conversion Rate'] = safe_div(
+        new_df[new_df.columns[3]],
+        new_df[new_df.columns[1]],
+        multiplier = 100
+    )
+    new_df['CPA'] = safe_div(
+        new_df[new_df.columns[2]],
+        new_df[new_df.columns[3]],
+        multiplier = 1
+    )
+    new_df['ROAS'] = safe_div(
+        new_df[new_df.columns[4]],
+        new_df[new_df.columns[2]],
+        multiplier = 100
+    )
     new_df = new_df.astype('float64')
     new_df = new_df.round({new_df.columns[2]: 2, new_df.columns[4]: 2, new_df.columns[5]: 2, new_df.columns[6]: 2, new_df.columns[7]: 2, new_df.columns[8]: 2, new_df.columns[9]: 2})
 
@@ -243,10 +244,26 @@ def transform_dataset_leadgen(df, group):
 
     new_df = pd.concat([impressions, clicks, cost, transactions], axis='columns', sort=False)
 
-    new_df['CTR'] = (new_df[new_df.columns[1]] / new_df[new_df.columns[0]] * 100)
-    new_df['CPC'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[1]])
-    new_df['Conversion Rate'] = (new_df[new_df.columns[3]] / new_df[new_df.columns[1]] * 100)
-    new_df['CPA'] = (new_df[new_df.columns[2]] / new_df[new_df.columns[3]])
+    new_df['CTR'] = safe_div(
+        new_df[new_df.columns[1]],
+        new_df[new_df.columns[0]],
+        multiplier = 100
+    )
+    new_df['CPC'] = safe_div(
+        new_df[new_df.columns[2]],
+        new_df[new_df.columns[1]],
+        multiplier = 1
+    ) 
+    new_df['Conversion Rate'] = safe_div(
+        new_df[new_df.columns[3]],
+        new_df[new_df.columns[1]],
+        multiplier = 100
+    )
+    new_df['CPA'] = safe_div(
+        new_df[new_df.columns[2]],
+        new_df[new_df.columns[3]],
+        multiplier = 1
+    )
     new_df = new_df.astype('float64')
     new_df = new_df.round({new_df.columns[2]: 2, new_df.columns[4]: 2, new_df.columns[5]: 2, new_df.columns[6]: 2, new_df.columns[7]: 2})
     new_df = new_df.rename(columns={new_df.columns[0]: 'Impressions'})
@@ -271,7 +288,11 @@ def get_report_data(df,client):
             cmp_prev = 2024
         report_data_tmp['prev'] = df.at[cmp_prev, column]
         report_data_tmp['current'] = df.at[cmp_curr, column]
-        report_data_tmp['compare'] = round(((report_data_tmp['current'] - report_data_tmp['prev']) / report_data_tmp['prev']) * 100, 2)
+        report_data_tmp['compare'] = round(safe_div(
+            report_data_tmp['current'] - report_data_tmp['prev'],
+            report_data_tmp['prev'],
+            multiplier = 100
+        ),2)
         if report_data_tmp['compare'] == float('nan') or report_data_tmp['compare'] == float('inf'):
             report_data_tmp['compare'] = '-'
         # Format Data to be readable 
@@ -318,8 +339,11 @@ def get_report_data_dim(curr_df, prev_df):
             if report_data_tmp['prev'] == '-' or report_data_tmp['current'] == '-':
                 report_data_tmp['compare'] = '-'
             else:
-                report_data_tmp['compare'] = round(((report_data_tmp['current'] - report_data_tmp['prev']) / report_data_tmp['prev']) * 100, 2)
-                
+                report_data_tmp['compare'] = round(safe_div(
+                    report_data_tmp['current'] - report_data_tmp['prev'],
+                    report_data_tmp['prev'],
+                    multiplier = 100
+            ),2)                
             # Format Data to be readable 
             if report_data_tmp['field'] == 'ROAS':
                 if report_data_tmp['prev'] != '-':
@@ -390,7 +414,6 @@ def send_email(client, html):
         smtp.starttls()
         smtp.ehlo()
         smtp.login(wr_email, wr_password)
-        smtp.sendmail(wr_email, 'door4_ppc_weekly_repo-aaaajnlzxtgjgjvtz4mhgys5qu@door4.slack.com', msg.as_string()) # Official: door4_ppc_weekly_repo-aaaajnlzxtgjgjvtz4mhgys5qu@door4.slack.com  
-        # Test: door4_ppc_weekly_repo-aaaajm7y7wz2nbal346iqdyucu@door4.slack.com
+        smtp.sendmail(wr_email, secrets["send_email"], msg.as_string()) 
 
 main()
