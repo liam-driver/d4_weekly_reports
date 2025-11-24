@@ -4,17 +4,18 @@
   <title>{{ client.name }} Weekly PPC Report ({{ client.start_date }} - {{ client.end_date }})</title>
 </head>
 <body>
-  <h1>{{ client.name }} Weekly PPC Report ({{ client.start_date_string }} - {{ client.end_date_string }})</h1>
+  <p><b>{{ client.name }} Weekly PPC Report ({{ client.start_date_string }} - {{ client.end_date_string }})</b></p>
   <p><i>This report has been generated with {{ client.report_dates }} data</i></p>
+  <br>
   <p><b>Live Dashboard Link: {{client.dashboard}}</b></p>
   <br>
-  <h2>BAU Update</h2>
+  <p><b>BAU Update: </b></p>
   <br>
-  <h2>WIP:</h2>
+  <p></pc><b>WIP: </b></p>
   <br>
-  <h2>Insights: </h2>
+  <p><b>Insights: </b></p>
   <br>
-  <h2>KPIs:</h2>
+  <p><b>KPIs:</b></p>
   {% if client.dimension == ''  %}
   <ul>
     {% if client.account_type == 'Lead Gen' %}
@@ -22,7 +23,7 @@
     <li> {{ client.report_data.7.field }}: {{ client.report_data.7.current }} ({{ client.report_data.7.compare }}) </li>
     {% else %}
     <li> {{ client.report_data.3.field }}: {{ client.report_data.3.current }} ({{ client.report_data.3.compare }}) </li>
-    {{ client.report_data.4.field }}: {{ client.report_data.4.current }} ({{ client.report_data.4.compare }}) </li>
+    <li>{{ client.report_data.4.field }}: {{ client.report_data.4.current }} ({{ client.report_data.4.compare }}) </li>
     <li> {{ client.report_data.9.field }}: {{ client.report_data.9.current }} ({{ client.report_data.9.compare }}) </li>
     {% endif %}
   </ul>
@@ -34,11 +35,14 @@
   </ul>
   {% endif %}
   <br>
-  <h2>Cost:</h2>
+  <p><b>Cost:</b></p>
   <ul>
     <li> Cost: {{ client.report_data.2.current }} </li>
     <li> Run Rate: {{ client.run_rate }} </li>
+    {% if client.budget == '' %}
+    {% else %}
     <li> Budget: {{ client.budget }} </li>
+    {% endif %}
   </ul>
 </body>
 </html>

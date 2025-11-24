@@ -22,7 +22,7 @@ sa = gspread.authorize(creds)
 # Initial Config -- Declare Global Variables and initialise datasets (filename=serene-lotus-379510-b3f9b3b23758)
 sh = sa.open('Weekly Reports')
 cfg = sh.worksheet("Config")
-ws_config = pd.DataFrame(cfg.get_all_records())
+ws_config = pd.DataFrame(cfg.get_all_records()).iloc[:, 1:]
 locale.setlocale(locale.LC_ALL, 'en_GB.UTF-8')
 # Time Variables
 now = pd.Timestamp.now()
@@ -342,7 +342,9 @@ def get_report_data_dim(curr_df, prev_df):
                     report_data_tmp['current'] - report_data_tmp['prev'],
                     report_data_tmp['prev'],
                     multiplier = 100
-            ),2)                
+            ),2)       
+            if report_data_tmp['compare'] == 0.0:
+                report_data_tmp['compare'] = '-'                      
             # Format Data to be readable 
             if report_data_tmp['field'] == 'ROAS':
                 if report_data_tmp['prev'] != '-':
