@@ -151,25 +151,29 @@ def create_dataset_dim(client):
         curr_df = df.loc[mask]
         group = curr_df.groupby(client['dimension'])
         curr_df = transform_dataset_leadgen(curr_df, group)
+        curr_df= add_overall_row(curr_df, client)
         curr_df = curr_df.iloc[:, 3:4].join(curr_df.loc[:, ['CPA']])
 
         mask = ((df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
         prev_df = df.loc[mask]
         group = prev_df.groupby(client['dimension'])
         prev_df = transform_dataset_leadgen(prev_df, group)
+        prev_df = add_overall_row(prev_df, client)
         prev_df = prev_df.iloc[:, 3:4].join(prev_df.loc[:, ['CPA']])
     else: 
         mask = ((df['Date'] >= client['start_date']) & (df['Date'] <= yday_f))
         curr_df = df.loc[mask]
         group = curr_df.groupby(client['dimension'])
         curr_df = transform_dataset_ecomm(curr_df, group)
-        curr_df = curr_df.iloc[:, 3:4].join(curr_df.loc[:, ['ROAS']])
+        curr_df= add_overall_row(curr_df, client)
+        curr_df = curr_df.iloc[:, 4:5].join(curr_df.loc[:, ['ROAS']])
 
         mask = ((df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
         prev_df = df.loc[mask]
         group = prev_df.groupby(client['dimension'])
         prev_df = transform_dataset_ecomm(prev_df, group)
-        prev_df = prev_df.iloc[:, 3:4].join(prev_df.loc[:, ['ROAS']])
+        prev_df = add_overall_row(prev_df, client)
+        prev_df = prev_df.iloc[:, 4:5].join(prev_df.loc[:, ['ROAS']])
     curr_df.replace([np.nan, np.inf], '-', inplace=True)
     prev_df.replace([np.nan, np.inf], '-', inplace=True)
     df = [curr_df, prev_df]
@@ -229,6 +233,63 @@ def transform_dataset_ecomm(df, group):
     new_df = new_df.rename(columns={new_df.columns[4]: 'Transaction Revenue'})
     return new_df
 
+def add_overall_row(curr_df: pd.DataFrame, client: dict) -> pd.DataFrame:
+    df = curr_df.copy()
+
+    overall = {}
+
+    if client['account_type'] == 'Lead Gen':
+        # Totals
+        total_impr = df['Impressions'].sum()
+        total_clicks = df['Clicks'].sum()
+        total_cost = df['Cost'].sum()
+        total_conversions = df['Conversions'].sum()
+
+        # Base totals
+        overall['Impressions'] = total_impr
+        overall['Clicks'] = total_clicks
+        overall['Cost'] = total_cost
+        overall['Conversions'] = total_conversions
+
+        # Derived metrics using safe_div
+        overall['CTR'] = round(safe_div(total_clicks, total_impr, multiplier=100.0),2)
+        overall['CPC'] = round(safe_div(total_cost, total_clicks),2)
+        overall['Conversion Rate'] = round(safe_div(total_conversions, total_clicks, multiplier=100.0),2)
+        overall['CPA'] = round(safe_div(total_cost, total_conversions),2)
+
+    else:
+        # Treat anything else as Ecommerce
+        total_impr = df['Impressions'].sum()
+        total_clicks = df['Clicks'].sum()
+        total_cost = df['Cost'].sum()
+        total_txns = df['Transactions'].sum()
+        total_revenue = df['Transaction Revenue'].sum()
+
+        # Base totals
+        overall['Impressions'] = total_impr
+        overall['Clicks'] = total_clicks
+        overall['Cost'] = total_cost
+        overall['Transactions'] = total_txns
+        overall['Transaction Revenue'] = total_revenue
+
+        # Derived metrics using safe_div
+        overall['CTR'] = round(safe_div(total_clicks, total_impr, multiplier=100.0),2)
+        overall['CPC'] = round(safe_div(total_cost, total_clicks),2)
+        overall['Conversion Rate'] = round(safe_div(total_txns, total_clicks, multiplier=100.0),2)
+        overall['CPA'] = round(safe_div(total_cost, total_txns),2)
+        # ROAS as a percentage (e.g. 316.30)
+        overall['ROAS'] = round(safe_div(total_revenue, total_cost, multiplier=100.0),2)
+
+    # Ensure all existing columns are represented in the overall row
+    for col in df.columns:
+        if col not in overall:
+            overall[col] = np.nan
+
+    # Append the overall row at the bottom
+    df.loc['Overall'] = pd.Series(overall)
+
+    return df
+
 # Transform dataset into lead gen template
 def transform_dataset_leadgen(df, group):
     # Sum of the main columns
@@ -283,8 +344,8 @@ def get_report_data(df,client):
             cmp_curr = client['start_date'].strftime('%B')
             cmp_prev = (client['start_date'] - pd.DateOffset(months=1)).normalize().strftime('%B')
         else:
-            cmp_curr = 2025
-            cmp_prev = 2024
+            cmp_curr = pd.to_datetime(client['start_date']).year
+            cmp_prev = cmp_curr-1
         report_data_tmp['prev'] = df.at[cmp_prev, column]
         report_data_tmp['current'] = df.at[cmp_curr, column]
         report_data_tmp['compare'] = round(safe_div(
@@ -351,7 +412,7 @@ def get_report_data_dim(curr_df, prev_df):
                     report_data_tmp['prev'] = str(report_data_tmp['prev']) + "%"
                 if report_data_tmp['current'] != '-':
                     report_data_tmp['current'] = str(report_data_tmp['current']) + "%"
-            elif report_data_tmp['field'] == 'CPA':
+            elif report_data_tmp['field'] == 'CPA' or 'Transaction Revenue':
                 if report_data_tmp['prev'] != '-':
                     report_data_tmp['prev'] = locale.currency(report_data_tmp['prev'], grouping=True)
                 if report_data_tmp['current'] != '-':
