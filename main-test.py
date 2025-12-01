@@ -79,6 +79,7 @@ def init_clients():
         clients_tmp['name'] = column
         clients_tmp['account_type'] = ws_config.at[0, column]
         clients_tmp['dashboard'] = ws_config.at[1, column]
+        clients_tmp['plan'] = ws_config.at[4, column]
         clients_tmp['budget'] = ws_config.at[2, column]
         clients_tmp['dimension'] = ws_config.at[3, column]
         clients_tmp['start_date'] = first_of_current_month
