@@ -412,7 +412,7 @@ def get_report_data_dim(curr_df, prev_df):
                     report_data_tmp['prev'] = str(report_data_tmp['prev']) + "%"
                 if report_data_tmp['current'] != '-':
                     report_data_tmp['current'] = str(report_data_tmp['current']) + "%"
-            elif report_data_tmp['field'] == 'CPA' or 'Transaction Revenue':
+            elif report_data_tmp['field'] in ('CPA', 'Transaction Revenue'):
                 if report_data_tmp['prev'] != '-':
                     report_data_tmp['prev'] = locale.currency(report_data_tmp['prev'], grouping=True)
                 if report_data_tmp['current'] != '-':
