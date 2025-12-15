@@ -11,6 +11,7 @@ import locale
 from pandas.tseries.offsets import MonthEnd
 from get_plans import build_plan_json_from_sheet
 from get_funnel_data import get_funnel_data
+from get_context_data import get_context_data
 
 pd.options.mode.chained_assignment = None  # default='warn'
 np.seterr(divide='ignore', invalid='ignore')
@@ -36,26 +37,15 @@ end_of_current_month = now + pd.offsets.MonthEnd(0)
 def main():
     # Initialise the client list
     clients = init_clients()
-
     for client in clients:
         print(client['name'])
-        if client['plan'] != '':
-            plan_json = build_plan_json_from_sheet(client)
+        # if client['plan'] != '':
+            # plan_json = build_plan_json_from_sheet(client)
         client = get_funnel_data(client)
+        # client['Context'] = get_context_data(client)
         email_template = create_email_template(client)
         send_email(client, email_template)
     return 0
-
-def safe_div(num, den, multiplier=1.0, default=0.0):
-    # pandas Series / DataFrame path
-    if isinstance(num, (pd.Series, pd.DataFrame)) or isinstance(den, (pd.Series, pd.DataFrame)):
-        den = den.replace(0, np.nan)
-        result = (num / den) * multiplier
-        return result.fillna(default)
-    # scalar path
-    if den == 0 or pd.isna(den) or pd.isna(num):
-        return default
-    return (num / den) * multiplier
 
 # Initialise the client 
 def init_clients():

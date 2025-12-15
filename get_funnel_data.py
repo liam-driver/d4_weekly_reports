@@ -3,6 +3,8 @@ import numpy as np
 import locale
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from safe_div import safe_div
+
 
 
 
@@ -30,7 +32,6 @@ first_of_current_month = now.replace(day=1).normalize()
 end_of_current_month = now + pd.offsets.MonthEnd(0)
 
 def get_funnel_data(client):
-
     # Initialise the client list
     if client["dimension"] == '':
         # Create dataset (not dimension)
@@ -50,17 +51,6 @@ def get_funnel_data(client):
     client['run_rate'] = get_run_rate(client)
     return client
 
-def safe_div(num, den, multiplier=1.0, default=0.0):
-    # pandas Series / DataFrame path
-    if isinstance(num, (pd.Series, pd.DataFrame)) or isinstance(den, (pd.Series, pd.DataFrame)):
-        den = den.replace(0, np.nan)
-        result = (num / den) * multiplier
-        return result.fillna(default)
-    # scalar path
-    if den == 0 or pd.isna(den) or pd.isna(num):
-        return default
-    return (num / den) * multiplier
-
 # Return dictionary of data points
 def create_dataset(client):
     client['report_type'] = 'normal'
@@ -75,14 +65,14 @@ def create_dataset(client):
         first_compare = (client['start_date'] - pd.DateOffset(years=1)).normalize()
         yday_compare = (yday - pd.DateOffset(years=1)).normalize()
         client['report_dates'] = 'YoY'
-        mask = ((df['Date'] >= client['start_date']) & (df['Date'] <= yday)) | ((df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
+        mask = ((df['Ad Platform']!='') & (df['Date'] >= client['start_date']) & (df['Date'] <= yday)) | ((df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
         df = df.loc[mask]
         group = df.groupby(['Year'])
     else: 
         first_compare = (client['start_date'] - pd.DateOffset(months=1)).normalize()
         yday_compare = (yday - pd.DateOffset(months=1)).normalize()
         client['report_dates'] = 'MoM'
-        mask = ((df['Date'] >= client['start_date']) & (df['Date'] <= yday)) | ((df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
+        mask = ((df['Ad Platform']!='') & (df['Date'] >= client['start_date']) & (df['Date'] <= yday)) | ((df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
         df = df.loc[mask]
         group = df.groupby(['Month'])
     # Transform data into data set
@@ -115,28 +105,28 @@ def create_dataset_dim(client):
         yday_compare = (yday_f - pd.DateOffset(months=1)).normalize()
     # Transform data into data set 
     if client['account_type'] == 'Lead Gen': 
-        mask = ((df['Date'] >= client['start_date']) & (df['Date'] <= yday_f))
+        mask = ((df['Ad Platform']!='') & (df['Date'] >= client['start_date']) & (df['Date'] <= yday_f))
         curr_df = df.loc[mask]
         group = curr_df.groupby(client['dimension'])
         curr_df = transform_dataset_leadgen(curr_df, group)
         curr_df= add_overall_row(curr_df, client)
         curr_df = curr_df.iloc[:, 3:4].join(curr_df.loc[:, ['CPA']])
 
-        mask = ((df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
+        mask = ((df['Ad Platform']!='') & (df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
         prev_df = df.loc[mask]
         group = prev_df.groupby(client['dimension'])
         prev_df = transform_dataset_leadgen(prev_df, group)
         prev_df = add_overall_row(prev_df, client)
         prev_df = prev_df.iloc[:, 3:4].join(prev_df.loc[:, ['CPA']])
     else: 
-        mask = ((df['Date'] >= client['start_date']) & (df['Date'] <= yday_f))
+        mask = ((df['Ad Platform']!='') & (df['Date'] >= client['start_date']) & (df['Date'] <= yday_f))
         curr_df = df.loc[mask]
         group = curr_df.groupby(client['dimension'])
         curr_df = transform_dataset_ecomm(curr_df, group)
         curr_df= add_overall_row(curr_df, client)
         curr_df = curr_df.iloc[:, 4:5].join(curr_df.loc[:, ['ROAS']])
 
-        mask = ((df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
+        mask = ((df['Ad Platform']!='') & (df['Date'] >= first_compare) & (df['Date'] <= yday_compare))
         prev_df = df.loc[mask]
         group = prev_df.groupby(client['dimension'])
         prev_df = transform_dataset_ecomm(prev_df, group)
@@ -401,6 +391,7 @@ def get_report_data_dim(curr_df, prev_df):
             report_data.append(report_data_tmp)
         dim_data_tmp['report_data'] = report_data
         dim_data.append(dim_data_tmp)
+    print(dim_data)
     return dim_data
 
 def get_run_rate(client):
