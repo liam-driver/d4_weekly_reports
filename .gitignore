@@ -5,14 +5,13 @@
 !.gitignore
 
 # Keep core files
-!main.py
+!generate_commentary.py
+!get_context_data.py
 !get_funnel_data.py
 !get_plans.py
-!get_context_data.py
-!main-test.py
+!main.py
+!safe_div.py
 !requirements.txt
-!README.md
-!README
 !README.*
 
 # Keep the templates directory and all its contents

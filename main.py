@@ -1,6 +1,7 @@
 import gspread
 import smtplib
 import json
+from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 from email.mime.text import MIMEText
@@ -12,6 +13,7 @@ from pandas.tseries.offsets import MonthEnd
 from get_plans import build_plan_json_from_sheet
 from get_funnel_data import get_funnel_data
 from get_context_data import get_context_data
+from generate_commentary import generate_commentary
 
 pd.options.mode.chained_assignment = None  # default='warn'
 np.seterr(divide='ignore', invalid='ignore')
@@ -19,6 +21,7 @@ np.seterr(divide='ignore', invalid='ignore')
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scope)
 sa = gspread.authorize(creds)
+
 
 # Initial Config -- Declare Global Variables and initialise datasets (filename=serene-lotus-379510-b3f9b3b23758)
 sh = sa.open('Weekly Reports')
@@ -34,15 +37,21 @@ if now.day <= 5:
 first_of_current_month = now.replace(day=1).normalize()
 end_of_current_month = now + pd.offsets.MonthEnd(0)
 
+
 def main():
     # Initialise the client list
     clients = init_clients()
     for client in clients:
+        #if client['report_due_date'] != datetime.today().strftime("%A"):
+            #continue
         print(client['name'])
-        # if client['plan'] != '':
-            # plan_json = build_plan_json_from_sheet(client)
+        if client["plan"] != "":
+            plans = build_plan_json_from_sheet(client)  # now returns {"full": ..., "report_window": ...}
+            client["plan_json_full"] = plans["full"]
+            client["plan_json"] = plans["report_window"] 
         client = get_funnel_data(client)
-        # client['Context'] = get_context_data(client)
+        client['site_context'] = get_context_data(client)
+        client['commentary'] = generate_commentary(client)
         email_template = create_email_template(client)
         send_email(client, email_template)
     return 0
@@ -60,6 +69,8 @@ def init_clients():
         clients_tmp['dimension'] = ws_config.at[3, column]
         clients_tmp['start_date'] = first_of_current_month
         clients_tmp['end_date'] = end_of_current_month
+        clients_tmp['report_due_date'] = ws_config.at[5, column]
+        clients_tmp['client_context'] = ws_config.at[6, column]
         clients_tmp['start_date_string'] = clients_tmp['start_date'].normalize().strftime("%d/%m/%Y") 
         if yday < clients_tmp['end_date']:
             clients_tmp['end_date_string'] = yday.normalize().strftime("%d/%m/%Y")
@@ -101,5 +112,4 @@ def send_email(client, html):
         smtp.ehlo()
         smtp.login(wr_email, wr_password)
         smtp.sendmail(wr_email, secrets["send_email_test"], msg.as_string()) 
-
 main()

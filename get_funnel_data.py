@@ -4,6 +4,8 @@ import locale
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from safe_div import safe_div
+from pandas.tseries.offsets import MonthEnd
+
 
 
 
@@ -38,6 +40,7 @@ def get_funnel_data(client):
         dataset = create_dataset(client)
         report_data = get_report_data(dataset, client)
         client['report_data'] = report_data
+        client['report_type'] = 'grouped'
     else:
         dataset = create_dataset(client)
         report_data = get_report_data(dataset, client)
@@ -48,6 +51,7 @@ def get_funnel_data(client):
         prev_df = dataset_dim[1]
         report_data_dim = get_report_data_dim(curr_df, prev_df)
         client['report_data_dim'] = report_data_dim
+        client['report_type'] = 'dimension'
     client['run_rate'] = get_run_rate(client)
     return client
 
@@ -391,7 +395,6 @@ def get_report_data_dim(curr_df, prev_df):
             report_data.append(report_data_tmp)
         dim_data_tmp['report_data'] = report_data
         dim_data.append(dim_data_tmp)
-    print(dim_data)
     return dim_data
 
 def get_run_rate(client):

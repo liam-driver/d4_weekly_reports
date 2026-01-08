@@ -10,12 +10,31 @@
   <p><b>Live Dashboard Link: {{client.dashboard}}</b></p>
   <p><b>90 Day Plan: {{client.dashboard}}</b></p>
   <br>
-  <p><b>BAU Update: </b></p>
-  <br>
-  <p></pc><b>WIP: </b></p>
+  <p><b>WIP: </b></p>
+    {% for task in client.commentary.plan_overview.tasks %}
+      {{ loop.index }}) {{ task.task }}
+      <ul>
+      <li>Overview: {{ task.summary }}</li>
+      <li>Status: {{ task.status }}</li>
+      <li>Deadline: {{ task.end_date }}</li>
+      </ul>
+      <br>
+    {% endfor %}
+  <p><b>Performance Overview: </b></p>
+  <ul>
+    <li>
+      {{client.commentary.performance_overview.summary}}
+    </li>
+  </ul>
   <br>
   <p><b>Insights: </b></p>
-  <br>
+    {% for point in client.commentary.performance_points %}
+      {{ loop.index }}) {{point.title}}
+      <ul>
+        <li>{{point.summary}}</li>
+      </ul>
+    <br>
+    {% endfor %}
   <p><b>KPIs:</b></p>
   {% if client.dimension == ''  %}
   <ul>
