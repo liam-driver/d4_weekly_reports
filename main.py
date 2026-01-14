@@ -18,12 +18,22 @@ from generate_commentary import generate_commentary
 pd.options.mode.chained_assignment = None  # default='warn'
 np.seterr(divide='ignore', invalid='ignore')
 
-scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scope)
+with open("secrets.json","r") as f:
+    secrets = json.load(f)
+
+scope = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive",
+]
+creds = ServiceAccountCredentials.from_json_keyfile_dict(
+    secrets["google_service_account"], 
+    scope
+)
 sa = gspread.authorize(creds)
 
 
-# Initial Config -- Declare Global Variables and initialise datasets (filename=serene-lotus-379510-b3f9b3b23758)
+# Initial Config -- Declare Global Variables and initialise datasets
 sh = sa.open('Weekly Reports')
 cfg = sh.worksheet("Config")
 ws_config = pd.DataFrame(cfg.get_all_records()).iloc[:, 1:]
@@ -90,8 +100,6 @@ def create_email_template(client):
 # Send email
 def send_email(client, html):
     # Define email & password for sender email
-    with open("secrets.json","r") as f:
-        secrets = json.load(f)
 
     wr_email = secrets["email"]
     wr_password = secrets["password"]
