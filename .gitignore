@@ -13,6 +13,7 @@
 !safe_div.py
 !requirements.txt
 !README.*
+!get_config.py
 
 # Keep the templates directory and all its contents
 !templates/
