@@ -12,8 +12,8 @@ def main():
     with open("storage/config.json", "r") as config_json:
         clients = json.load(config_json)
     for client in clients:
-        # if client['report_due_date'] != datetime.today().strftime("%A"):
-        #     continue
+        if client['report_due_date'] != datetime.today().strftime("%A"):
+            continue
         print(client['name'])
         client = config_dates(client)
         try:
@@ -24,13 +24,11 @@ def main():
         except:
             log_error(f"{client['name']} Report Skipped: misconfigured 90 Day Plan")
             continue
-        client = get_funnel_data(client)
-
-        # try:
-        #     client = get_funnel_data(client)
-        # except:
-        #     log_error(f"{client['name']} Report Skipped: misconfigured Funnel Data Export")
-        #     continue
+        try:
+            client = get_funnel_data(client)
+        except:
+            log_error(f"{client['name']} Report Skipped: misconfigured Funnel Data Export")
+            continue
         try:
             client['site_context'] = get_context_data(client)
         except:
