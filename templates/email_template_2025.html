@@ -5,7 +5,7 @@
 </head>
 <body>
   <p><b>{{ client.name }} Weekly PPC Report ({{ client.start_date_string }} - {{ client.end_date_string }})</b></p>
-  <p><i>This report has been generated with {{ client.report_dates }} data</i></p>
+  <p><i>Data used: {{client.comparison_dates }}</i></p>
   <br>
   <p><b>Live Dashboard Link: {{client.dashboard}}</b></p>
   <p><b>90 Day Plan: {{client.plan}}</b></p>
@@ -36,32 +36,32 @@
     <br>
     {% endfor %}
   <p><b>KPIs:</b></p>
-  {% if client.dimension == ''  %}
   <ul>
-    {% if client.account_type == 'Lead Gen' %}
-    <li> {{ client.report_data.3.field }}: {{ client.report_data.3.current }} ({{ client.report_data.3.compare }}) </li>
-    <li> {{ client.report_data.7.field }}: {{ client.report_data.7.current }} ({{ client.report_data.7.compare }}) </li>
-    {% else %}
-    <li> {{ client.report_data.3.field }}: {{ client.report_data.3.current }} ({{ client.report_data.3.compare }}) </li>
-    <li>{{ client.report_data.4.field }}: {{ client.report_data.4.current }} ({{ client.report_data.4.compare }}) </li>
-    <li> {{ client.report_data.9.field }}: {{ client.report_data.9.current }} ({{ client.report_data.9.compare }}) </li>
-    {% endif %}
-  </ul>
-  {% else %}
-  <ul>
-    {% for dimension in client.report_data_dim %}
-    <li> {{ dimension.dim_name }}: {{ dimension.report_data.0.current }} {{ dimension.report_data.0.field }} ({{ dimension.report_data.0.compare }}) @ {{ dimension.report_data.1.current }} {{ dimension.report_data.1.field }} ({{ dimension.report_data.1.compare }}) </li>
+    {% for dimension, metrics in client.funnel_data.items() %}
+      {% if client.account_type == "Ecommerce" %}
+        <li>
+          {{ dimension }}:
+          {{ metrics["Transaction Revenue"]["curr"] }} Transaction Revenue ({{ metrics["Transaction Revenue"]["pct"] }})
+          @ {{ metrics["ROAS"]["curr"] }} ROAS ({{ metrics["ROAS"]["pct"] }})
+        </li>
+      {% else %}
+        <li>
+          {{ dimension }}:
+          {{ metrics["Conversions"]["curr"] }} Conversions ({{ metrics["Conversions"]["pct"] }})
+          @ {{ metrics["CPA"]["curr"] }} CPA ({{ metrics["CPA"]["pct"] }})
+        </li>
+      {% endif %}
     {% endfor %}
   </ul>
-  {% endif %}
   <br>
   <p><b>Cost:</b></p>
   <ul>
-    <li> Cost: {{ client.report_data.2.current }} </li>
-    <li> Run Rate: {{ client.run_rate }} </li>
-    {% if client.budget == '' %}
-    {% else %}
-    <li> Budget: {{ client.budget }} </li>
+    <li> Cost: {{ client.funnel_data.Total.Cost.curr}} </li>
+    {% if client.funnel_data.Total.Cost.curr != client.run_rate %}
+      <li> Run Rate: {{ client.run_rate }} </li>
+    {% endif %}
+    {% if client.budget != '' %}
+    <li> Budget: £{{ client.budget }} </li>
     {% endif %}
   </ul>
 </body>

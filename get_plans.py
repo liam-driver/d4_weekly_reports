@@ -7,7 +7,7 @@ import json
 
 def build_plan_json_from_sheet():
     # 0. Initialise the sheets
-    with open("secrets.json","r") as f:
+    with open("storage/secrets.json","r") as f:
         secrets = json.load(f)
     scope = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -19,7 +19,7 @@ def build_plan_json_from_sheet():
         scope
     )
     sa = gspread.authorize(creds)
-    with open("config.json", "r") as config_json:
+    with open("storage/config.json", "r") as config_json:
         clients = json.load(config_json)
     plans = {}
     for client in clients:
@@ -46,7 +46,7 @@ def build_plan_json_from_sheet():
                 }
             client_plans[sheet.title] = plan
         plans[client["name"]]= client_plans
-    with open("plans.json", "w", encoding="utf-8") as f:
+    with open("storage/plans.json", "w", encoding="utf-8") as f:
         json.dump(plans, f, ensure_ascii=False, indent=2)
     return 0
 
@@ -62,7 +62,6 @@ def get_weeks(df):
 
 # Convert the google sheet tasks into a json object that can be added to the plans json
 def get_tasks(df, plan_type):
-    
     # Check for misconfigured headers
     header_row_candidates = df.index[df[1] == "Task"]
     if len(header_row_candidates) == 0:

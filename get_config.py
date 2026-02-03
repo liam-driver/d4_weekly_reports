@@ -2,12 +2,11 @@ import gspread
 import json
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
-from main import log_error
-
+from error_logger import log_error
 
 
 def init_clients():
-    with open("secrets.json","r") as f:
+    with open("storage/secrets.json","r") as f:
         secrets = json.load(f)
 
     scope = [
@@ -50,15 +49,22 @@ def init_clients():
         if clients_tmp['data_config'] == 'FALSE':
             log_error("Client Initialisation Skipped: missing 'data configuration' in config sheet")
             continue
+        clients_tmp['comparison_dates'] = ws_config.at[8, column]
+        if clients_tmp['comparison_dates'] == '':
+            log_error("Client Initialisation Skipped: missing 'comparison dates' in config sheet")
+            continue
+        clients_tmp['dimension'] = ws_config.at[3, column]
+        if clients_tmp['dimension'] == '':
+            log_error("Client Initialisation Skipped: missing 'Dimension' in config sheet")
+            continue
 
         # Optional
         clients_tmp['dashboard'] = ws_config.at[1, column]
-        clients_tmp['budget'] = ws_config.at[2, column]
-        clients_tmp['dimension'] = ws_config.at[3, column]
+        clients_tmp['budget'] = ws_config.at[2, column][1:]
         clients_tmp['client_context'] = ws_config.at[6, column]
         
         clients.append(clients_tmp)
-    with open("config.json", "w", encoding="utf-8") as f:
+    with open("storage/config.json", "w", encoding="utf-8") as f:
         json.dump(clients, f, ensure_ascii=False, indent=2)
     return 0
 

@@ -5,12 +5,15 @@
 !.gitignore
 
 # Keep core files
+!config_dates.py
+!error_logger.py
 !generate_commentary.py
 !get_context_data.py
 !get_funnel_data.py
 !get_plans.py
 !main.py
 !safe_div.py
+!send_email.pyc
 !requirements.txt
 !README.*
 !get_config.py

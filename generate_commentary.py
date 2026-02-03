@@ -1,40 +1,25 @@
 import json
 from openai import OpenAI
 
-with open("secrets.json", "r") as f:
+with open("storage/secrets.json", "r") as f:
     secrets = json.load(f)
 oai = OpenAI(api_key=secrets["openai_key"])
 
 
 def generate_commentary(client):
-    if client['report_type'] == 'grouped':
-        payload = {
-            "inputs": {
-                "plans_90_day": client['plan_json'],
-                "performance": client['report_data'],
-                "ga4_context": client['site_context'],
-                "report_start_date": client['start_date_string'],
-                "report_end_date": client['end_date_string'],
-                "monthly_budget": client['budget'],
-                "run_rate": client['run_rate'],
-                "comparison_period": client['report_dates'],
-                "client_context": client['client_context']
-            }
+    payload = {
+        "inputs": {
+            "plans_90_day": client['plan_json'],
+            "performance": client['funnel_data'],
+            "ga4_context": client['site_context'],
+            "report_start_date": client['start_date_string'],
+            "report_end_date": client['end_date_string'],
+            "monthly_budget": client['budget'],
+            "comparison_period": client['report_dates'],
+            "client_context": client['client_context']
         }
-    else:
-        payload = {
-            "inputs": {
-                "plans_90_day": client['plan_json'],
-                "performance": client['report_data_dim'],
-                "ga4_context": client['site_context'],
-                "report_start_date": client['start_date_string'],
-                "report_end_date": client['end_date_string'],
-                "monthly_budget": client['budget'],
-                "run_rate": client['run_rate'],
-                "comparison_period": client['report_dates'],
-                "client_context": client['client_context']
-            }
         }
+
 
     schema = {
         "name": "weekly_marketing_commentary",
