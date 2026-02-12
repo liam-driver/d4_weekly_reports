@@ -62,7 +62,11 @@ def init_clients():
         clients_tmp['dashboard'] = ws_config.at[1, column]
         clients_tmp['budget'] = ws_config.at[2, column][1:]
         clients_tmp['client_context'] = ws_config.at[6, column]
-        
+        clients_tmp['holistic_plans'] = ws_config.at[9, column]
+        clients_tmp['paid_plans'] = ws_config.at[10, column]
+        clients_tmp['kpis'] = ws_config.at[11, column]
+        clients_tmp['seasonality'] = ws_config.at[12, column]
+        clients_tmp['historical_context'] = ws_config.at[13, column]
         clients.append(clients_tmp)
     with open("storage/config.json", "w", encoding="utf-8") as f:
         json.dump(clients, f, ensure_ascii=False, indent=2)

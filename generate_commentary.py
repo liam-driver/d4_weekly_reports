@@ -10,15 +10,20 @@ def generate_commentary(client):
     payload = {
         "inputs": {
             "plans_90_day": client['plan_json'],
-            "performance": client['funnel_data'],
-            "ga4_context": client['site_context'],
+            "paid_data": client['llm_data'],
+            "overall_data": client['overall_data'],
             "report_start_date": client['start_date_string'],
             "report_end_date": client['end_date_string'],
             "monthly_budget": client['budget'],
-            "comparison_period": client['report_dates'],
-            "client_context": client['client_context']
+            "reporting_period": client['comparison_dates'],
+            "client_context": client['client_context'],
+            "holistic_plans": client['holistic_plans'],
+            "paid_plans": client['paid_plans'],
+            "kpis": client['kpis'],
+            "seasonality": client['seasonality'],
+            "historical_context": client['historical_context']
         }
-        }
+    }
 
 
     schema = {
@@ -60,8 +65,8 @@ def generate_commentary(client):
                 },
                 "performance_points": {
                     "type": "array",
-                    "minItems": 3,
-                    "maxItems": 3,
+                    "minItems": 4,
+                    "maxItems": 10,
                     "items": {
                         "type": "object",
                         "additionalProperties": False,
@@ -84,12 +89,34 @@ def generate_commentary(client):
         model="gpt-4o-mini",
         instructions=(
             "You are a senior performance marketing manager writing weekly client-facing commentary.\n"
-            "We want critical commentary, but when expanding, we don't want scathing commentary. We want optimistic and plan aligned explainers\n"
+            "We want critical commentary, but when expanding, we don't want scathing commentary, we want productive commentary that will help us get on track with our KPIs\n"
             "Write in British English. Be direct, but human.\n"
-            "Use ONLY the provided data. If you don’t have enough evidence to claim something, say so and put it in risks_and_watchouts. "
             "The report must respect the provided report_start_date and report_end_date; comparisons can reference prior, especially if we can link performance to actions made previously, but the focus is the current reporting period.\n"
-            "The client_context variable can be used to get some more information on what the client is, what their offering is and previous trends that the exec on the account has noticed, don't lean on it for every point but for overall wide arching points it can be useful to reference.\n"
-            "When using data from 'ga4_context', only use it for context when analysing performance data, it should never be a point on its own, we are reporting on paid media performance here, not site wide performance\n"
+            
+            "Attached is a json object called 'inputs' this has attached all the context that will be used for the commentary that has been provided to you, the definition of each variable can be found below"
+            "DEFINITION OF VAIRABLES:"
+            "- plans_90_day: this is a json object that contains the plans for the current period as well as the plans from previous periods, giving you context on what we have done and what we are planning to do.\n"
+            "- paid_data: this is a json object that has all of the ppc data (e.g. Google ads) from the current period, compared to our comparison period. This has the data that we need to translate into insights, so it is the most importnat variable that you should factor in"
+            "- overall_data: this is a json object that has the overall site data, taken from GA4, from the current period, compared to our comparison period. This should be used for extra context for paid data so that we can compare it to other channels, like Organic, and lets us review how holistic plans are performing\n"
+            "- report_start_date: This is the date where the reporting period begins/\n"
+            "- report_end_date: This is the date where the reporting period ends\n"
+            "- monthly_budget: this is the monthly budget for the current reporting period"
+            "- reporting_period: this states the period of the report and states the data we are using as comparison. It can be one of three things:\n" \
+            "   - MTD Yearly Comparison: this means that the data period is month to date, and the comparison is the same date range last year\n"
+            "   - MTD Monthly Comparison: this means that the data period is month to date, and the comparison is the same date range last month\n"
+            "   - WTD Weekly Comparison: this means that the data period is week to date, is 7 day period prior to the last 7 day period\n"
+            "- client_context: this is context on the client and what their offering is"
+            "- holistic_plans: these are the goals for the entire website for the current year, we are striving to achieve these goals for our clients"
+            "- paid_plans: these are the goals for the ppc channel for the current year, we are striving to achieve these goals for our clients within the context of ppc channels"
+            "- kpis: these are the key performance indicators we are using to measure how the effectively we are achieving the goals that we are trying to hit"
+            "- seasonality: this is extra context for the account based on how it performs within the context of external factors"
+            "- historical_context: this is an overview on the performance on the account over previous years, giving extra context as to why we have made these plans"
+            
+            "It is essential that the context provided through the 'holistic_plans', 'paid_plans', 'kpis', 'seasonality' and 'historical_context' are used. We are comparing ourselves to ourselves and we want to stay algined to or goals for the year\n"
+            "When looking at volume metrics, make sure that we are comparing it to the amount we've spent, if conversions or transaction revenue is down, then we need to account for the cost as the interplay between volume metrics and cost are too important to just reference volume metrics on their own\n"
+            "When referring to data in a point, make sure that we are identfying where that data has come from, is it from the paid dataset, or the overall dataset? Furthermore, if we are referencing data from a specific dimension, make sure that is stated in the commentary\n"
+            "When using the comparisons, make sure that we are referring to the correct period, so if the comparison period is monthly, we are comparing to 'last month', if the compariosn period is yearly, we are comparing to 'last year', etc.\n"
+
             "STYLE REQUIREMENTS:\n"
             "- Write paragraphs (human readable) for the summaries, not bullet lists.\n"
             "- Evidence must be specific numbers from the performance / ga4_context inputs (e.g., revenue, ROAS, CPA, CR, AOV, spend).\n"
@@ -110,11 +137,18 @@ def generate_commentary(client):
                             "This is a direct reference to the 90 day plans which have been sent over through the plans_90_day json. Use this to create the following for EACH TASK that is attached in the JSON, irregardless of what category it falls under.:\n"
                                 "task, description, status: These are all just the corresponding values that have been sent over in the JSON\n"
                                 "start_date, end_date: convert these from iso format into the british standard date format (dd/mm/yyyy)\n"
-                                "summary: this is a more basic client friendly version of teh description, make it a one sentence summary that is to the point and not wrapped in marketing fluff\n"
+                                "summary: this is a more basic client friendly version of the description, make it a one sentence summary that is to the point and not wrapped in marketing fluff\n"
                         "2) performance_overview:\n"
-                            "- A sentence summary of overall performance for the current period vs the previous period, incorporating GA4 context (CR/AOV where available). Include a sentence on how budget / run rate is on track and whether we need to pull back or push on spend\n"
+                            "- A 2-4 sentence summary of paid_data and overall_data compared to the the 'holistic_plans' and 'paid_plans' how are we doing when it comes to achieving these goals. We want the focus to be on paid points, but frame it within the context of the holistic plans and the overall data we are seeing on the webstie\n"
+                            "- When bringing in actual data from paid_data and overall_data, only use data that explicitly aligns with the kpis that have been given to you is the 'kpis' secion.\n"
+                            "- You are allowed to use data to back up the statements, but be sparing, this is a quick human readable paaragraph for stakeholders\n"
+                            "- Include a sentence on current spend to date. Use spend, run rate, and budget to come to these conclusions.\n"
                         "3) performance_points: \n"
-                            "- Exactly 3 points with a headline, a description of the point and evidence (only include evidence if there is an outstanding figure that requires reporting, it is not necessary for a point to have data, just allude to the metric increasing / decreasing (e.g. impressions are up.)). The can be either good or bad, we want to highlight the ones with the most impact. If there are any ways to tie back into the previous actions from the actions from past initiatives then do this \n"
+                            "- For the summary, outline the problem, show the evidence from the data and assess why this may have happened using all the context provided to you. If there are any potential suggestions provide them"
+                            "- Try to be concise with the description, the points need to be quite glanceable\n"
+                            "- The first 2 points will be related to the 'kpis' provided, you don't need to reference every kpi, it can be whichever you deem most relevant\n"
+                            "- The rest of the points will be related to specific ad channels. Look at the each channel in the paid data and output at least 1 point (license to do more than 1 up to 2) for each channel that has been defined, if there are 5 channels, then there needs to be at least 5 channel specific points.If there are any channels that are seeing sharp changes in performance, if any metrics are seeing any sharp shifts when compared to the comparison period, if there are any potential gaps you feel you've identified\n"
+                            "- Points can only be made based off the data in the paid_data section, the overall_data can be used as context, but should never be used as a main point"
                     "Input JSON:\n"
                     + json.dumps(payload, ensure_ascii=False)
                 ),

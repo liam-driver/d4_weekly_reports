@@ -37,7 +37,7 @@
     {% endfor %}
   <p><b>KPIs:</b></p>
   <ul>
-    {% for dimension, metrics in client.funnel_data.items() %}
+    {% for dimension, metrics in client.paid_data.items() %}
       {% if client.account_type == "Ecommerce" %}
         <li>
           {{ dimension }}:
@@ -56,8 +56,8 @@
   <br>
   <p><b>Cost:</b></p>
   <ul>
-    <li> Cost: {{ client.funnel_data.Total.Cost.curr}} </li>
-    {% if client.funnel_data.Total.Cost.curr != client.run_rate %}
+    <li> Cost: {{ client.paid_data.Total.Cost.curr}} </li>
+    {% if client.paid_data.Total.Cost.curr != client.run_rate %}
       <li> Run Rate: {{ client.run_rate }} </li>
     {% endif %}
     {% if client.budget != '' %}

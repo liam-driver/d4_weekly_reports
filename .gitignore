@@ -8,7 +8,7 @@
 !config_dates.py
 !error_logger.py
 !generate_commentary.py
-!get_context_data.py
+!get_run_rate.py
 !get_funnel_data.py
 !get_plans.py
 !main.py
@@ -17,6 +17,7 @@
 !requirements.txt
 !README.*
 !get_config.py
+!generate_df.py
 
 # Keep the templates directory and all its contents
 !templates/

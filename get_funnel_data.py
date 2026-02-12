@@ -6,30 +6,70 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from safe_div import safe_div
 from pandas.tseries.offsets import MonthEnd
+from generate_df import *
 
 
 # Main workflow
-def get_funnel_data(client):
+def get_funnel_data(client, breakdown_dimension, table_type):
     df = initialise_df(client)
-    df = apply_filters(df, client)
-    df = add_secondary_metrics(df,client)
-    df = pivot_df(df,client)
-    final_data = df_to_json(df,client)
-    # with open("storage/funnel_data.json", "w", encoding="utf-8") as f:
-    #     json.dump(final_data, f, ensure_ascii=False, indent=2)
-    client['funnel_data'] = final_data
-    client['run_rate'] = get_run_rate(client)
-    return client
+    df = apply_filters(df, client, breakdown_dimension)
+    df = add_secondary_metrics(df, breakdown_dimension, table_type)
+    metrics = [col for col in df.columns.values if col not in ['Period', breakdown_dimension]]
+    df = pivot_df(df, breakdown_dimension, metrics)
+    final_data = df_to_json(df, breakdown_dimension, metrics)
+    with open("storage/funnel_data.json", "w", encoding="utf-8") as f:
+        json.dump(final_data, f, ensure_ascii=False, indent=2)
+    return final_data
 
-def get_run_rate(client):
-    now = pd.Timestamp.now()
-    yday = (now - pd.DateOffset(days=2)).normalize()
-    spend = float(client['funnel_data']['Total']['Cost']['curr'].replace('£', '').replace(',', '').strip())
-    day_diff_yday = ((yday - client['start_date']).days)
-    day_diff_month = ((client['end_date'] - client['start_date']).days) + 1
-    run_rate = (spend / day_diff_yday) * day_diff_month
-    run_rate = locale.currency(run_rate, grouping=True)
-    return(run_rate)
+def get_llm_data(client, breakdown_dimension, table_type):
+    df = initialise_df(client)
+    df = apply_filters(df, client, breakdown_dimension)
+    ad_channels = df['Ad Channel'].dropna().unique().tolist()
+    final_data = {}
+    print(ad_channels)
+    for channel in ad_channels:
+        if channel not in ['Combined', 'Dispaly','Shopping', 'Paid Search', 'Paid Social', 'Paid Social Static', 'Paid Social Video', 'Video']:
+            continue
+        df_llm = df.copy()
+        mask = (df['Ad Channel'] == channel)
+        df_llm = df_llm.loc[mask]
+        headers = list(df_llm.columns.values)
+        if channel == 'Paid Search':
+            if client['account_type'] == 'Lead Gen':
+                df_llm = paid_search_lead_gen(df_llm, 'Ad Platform' ,  headers)
+            else:
+                df_llm = paid_search_ecommerce(df_llm, 'Ad Platform' ,  headers)
+        if channel in ('Shopping', 'Combined', 'Performance Max'):
+            if client['account_type'] == 'Lead Gen':
+                df_llm = paid_shopping_lead_gen(df_llm, 'Ad Platform' ,  headers)
+            else:
+                df_llm = paid_shopping_ecommerce(df_llm, 'Ad Platform' ,  headers)
+        if channel == 'Display':
+            if client['account_type'] == 'Lead Gen':
+                df_llm = paid_display_lead_gen(df_llm, 'Ad Platform' ,  headers)
+            else:
+                df_llm = paid_display_ecommerce(df_llm, 'Ad Platform' ,  headers)
+        if channel == 'Video':
+            if client['account_type'] == 'Lead Gen':
+                df_llm = paid_video_lead_gen(df_llm, 'Ad Platform' ,  headers)
+            else:
+                df_llm = paid_video_ecommerce(df_llm, 'Ad Platform' ,  headers)
+        if channel == 'Paid Social Video':
+            if client['account_type'] == 'Lead Gen':
+                df_llm = paid_social_video_lead_gen(df_llm, 'Ad Platform' ,  headers)
+            else:
+                df_llm = paid_social_video_ecommerce(df_llm, 'Ad Platform' ,  headers)
+        if channel in ('Paid Social Static', 'Paid Social'):
+            if client['account_type'] == 'Lead Gen':
+                df_llm = paid_social_static_lead_gen(df_llm, 'Ad Platform' ,  headers)
+            else:
+                df_llm = paid_social_static_ecommerce(df_llm, 'Ad Platform' ,  headers)            
+        metrics = [col for col in df_llm.columns.values if col not in ['Period', 'Ad Platform']]
+        df_llm = pivot_df(df_llm, 'Ad Platform', metrics)
+        final_data[channel] = df_to_json(df_llm, 'Ad Platform', metrics)
+    with open("storage/llm_data.json", "w", encoding="utf-8") as f:
+        json.dump(final_data, f, ensure_ascii=False, indent=2)
+    return(final_data)
 
 # Initialise the dataframe
 def initialise_df(client):
@@ -46,7 +86,7 @@ def initialise_df(client):
     return df
 
 # Mask the dataframes so that they are within the correct date range
-def apply_filters(df, client):
+def apply_filters(df, client, breakdown_dimension):
     # Initialise dates
     now = pd.Timestamp.now()
     yday = (now - pd.DateOffset(days=2)).normalize()
@@ -78,137 +118,39 @@ def apply_filters(df, client):
         compare_end_date = (end_date - pd.DateOffset(days=7)).normalize()
     
     # Apply Date Mask
-    mask = ((df[client['dimension']]!='') & (((df['Date'] >= start_date) & (df['Date'] <= end_date)) | (df['Date'] >= compare_start_date) & (df['Date'] <= compare_end_date)))
+    mask = ((df[breakdown_dimension]!='') & (((df['Date'] >= start_date) & (df['Date'] <= end_date)) | (df['Date'] >= compare_start_date) & (df['Date'] <= compare_end_date)))
     df = df.loc[mask]
-
     # Add in helper columns to categorise date periods
     df.loc[df['Date'] >= start_date, 'Period'] = 'Current'
-    df.loc[df['Date'] <= start_date, 'Period'] = 'Previous'
+    df.loc[df['Date'] < start_date, 'Period'] = 'Previous'
     return (df)
 
 # Add in secondary metrics to the dataframe, such as ROAS
-def add_secondary_metrics(df, client):
-    headers = list(df.columns.values)
-    if client['account_type'] == 'Ecommerce':
-        # Group, filter and clean Dataframes
-        headers = ['Period', client['dimension'], headers[9], headers[10], headers[11], headers[12], headers[13]]
-        numeric_headers = headers[2:]
-        df_grouped = df[headers].copy()
-        df_grouped[numeric_headers] = df_grouped[numeric_headers].apply(pd.to_numeric, errors="coerce")
-        df_grouped = df_grouped.groupby(['Period', client['dimension']], as_index=False).sum()
-        df_grouped = df_grouped.rename(columns={"Cost (GBP)": 'Cost','Transaction Revenue (GBP)': 'Transaction Revenue'})
-        
-        # Add a total row for each period
-        curr_df = get_total_row(df_grouped[df_grouped["Period"].eq("Current")].copy(), "Current")
-        prev_df = get_total_row(df_grouped[df_grouped["Period"].eq("Previous")].copy(), "Previous")
-        df_grouped = pd.concat([curr_df, prev_df], ignore_index=True)
-        
-        # Standardise Column Names
-        df_grouped = df_grouped.rename(columns={
-            numeric_headers[0]: 'Impressions',
-            numeric_headers[1]: 'Clicks',
-            numeric_headers[2]: 'Cost',
-            numeric_headers[3]: 'Transactions',
-            numeric_headers[4]: 'Transaction Revenue'
-            })
+def add_secondary_metrics(df, breakdown_dimension, table_type):
+    if table_type == 'paid_ecommerce':
+        df_grouped = paid_ecommerce(df, breakdown_dimension)
 
-        # Get Secondary Metrics
-        df_grouped['CTR'] = safe_div(
-            df_grouped['Clicks'],
-            df_grouped['Impressions'],
-            multiplier = 100
-        )
-        df_grouped['CPC'] = safe_div(
-            df_grouped['Cost'],
-            df_grouped['Clicks'],
-            multiplier = 1
-        ) 
-        df_grouped['Conversion Rate'] = safe_div(
-            df_grouped['Transactions'],
-            df_grouped['Clicks'],
-            multiplier = 100
-        )
-        df_grouped['CPA'] = safe_div(
-            df_grouped['Cost'],
-            df_grouped['Transactions'],
-            multiplier = 1
-        )
-        df_grouped['ROAS'] = safe_div(
-            df_grouped['Transaction Revenue'],
-            df_grouped['Cost'],
-            multiplier = 100
-        )
+    if table_type == 'paid_lead_gen':
+        df_grouped = paid_lead_gen(df, breakdown_dimension)
 
-    if client['account_type'] == 'Lead Gen':
-        # Group, filter and clean Dataframes
-        headers = ['Period', client['dimension'], headers[9], headers[10], headers[11], headers[12]]
-        numeric_headers = headers[2:]
-        df_grouped = df[headers].copy()
-        df_grouped[numeric_headers] = df_grouped[numeric_headers].apply(pd.to_numeric, errors="coerce")
-        df_grouped = df_grouped.groupby(['Period', client['dimension']], as_index=False).sum()
-        df_grouped = df_grouped.rename(columns={"Cost (GBP)": 'Cost'})
+    if table_type == 'overall_ecommerce':
+        df_grouped = overall_ecommerce(df, breakdown_dimension)
 
-        # Add a total row for each period
-        curr_df = get_total_row(df_grouped[df_grouped["Period"].eq("Current")].copy(), "Current")
-        prev_df = get_total_row(df_grouped[df_grouped["Period"].eq("Previous")].copy(), "Previous")
-        df_grouped = pd.concat([curr_df, prev_df], ignore_index=True)   
-        
-        # Standardise Column Names
-        df_grouped = df_grouped.rename(columns={
-            numeric_headers[0]: 'Impressions',
-            numeric_headers[1]: 'Clicks',
-            numeric_headers[2]: 'Cost',
-            numeric_headers[3]: 'Conversions'
-            })
+    if table_type == 'overall_lead_gen':
+        df_grouped = overall_lead_gen(df, breakdown_dimension)
 
-        # Get Secondary Metrics
-        df_grouped['CTR'] = safe_div(
-            df_grouped['Clicks'],
-            df_grouped['Impressions'],
-            multiplier = 100
-        )
-        df_grouped['CPC'] = safe_div(
-            df_grouped['Cost'],
-            df_grouped['Clicks'],
-            multiplier = 1
-        ) 
-        df_grouped['Conversion Rate'] = safe_div(
-            df_grouped['Conversions'],
-            df_grouped['Clicks'],
-            multiplier = 100
-        )
-        df_grouped['CPA'] = safe_div(
-            df_grouped['Cost'],
-            df_grouped['Conversions'],
-            multiplier = 1
-        )
     return(df_grouped)
 
-# Create total rows for the filtered down data
-def get_total_row(df, period_label, dim_cols=2):
-    # Initialise the total row as a dictionary
-    total_row = {
-        df.columns[0]: period_label,
-        df.columns[1]: "Total",
-        **df.iloc[:, dim_cols:].sum(numeric_only=True).to_dict()
-    }
-    # Return the dicitonary concated on the end of the dataframe
-    return pd.concat([df, pd.DataFrame([total_row])], ignore_index=True)
-
 # Create a pivoted version of the data
-def pivot_df(df_grouped, client):
-    # Set Headers
-    metrics = list(df_grouped.columns.values)
-    metrics = metrics[2:]
-
+def pivot_df(df_grouped, breakdown_dimension,metrics):
     df_pivot = (
-        df_grouped.pivot(index=client['dimension'], columns="Period", values=metrics)
+        df_grouped.pivot(index=breakdown_dimension, columns="Period", values=metrics)
         .reindex(columns=pd.MultiIndex.from_product([metrics, ["Current", "Previous"]]))  # ensures both exist
     )
     
     df_pivot.columns = [f"{metric}__{period.lower()}" for metric, period in df_pivot.columns]
     df_pivot = df_pivot.reset_index()
-
+    
     for metric in metrics:
         df_pivot[f"{metric}__delta"] = df_pivot[f"{metric}__current"] - df_pivot[f"{metric}__previous"] 
         df_pivot[f"{metric}__pct"] = np.where(
@@ -220,20 +162,15 @@ def pivot_df(df_grouped, client):
     return(df_pivot)
 
 # Convert datafram to json format
-def df_to_json(df_pivot,client):
-    if client['account_type'] == "Lead Gen":
-        metrics = ["Impressions", "Clicks", "Cost", "Conversions", "CTR", "CPC", "Conversion Rate", "CPA"]
-    elif client['account_type'] == "Ecommerce":
-        metrics = ["Impressions", "Clicks", "Cost", "Transactions", "Transaction Revenue", "CTR", "CPC", "Conversion Rate", "CPA", "ROAS"]
-    
-    int_metrics = ["Impressions", "Clicks", "Transactions", "Conversions"]
-    pct_metrics = ["CTR", "Conversion Rate", "ROAS"]
-    gbp_metrics = ["Cost", "Transaction Revenue", "CPA", "CPC"]
+def df_to_json(df_pivot, breakdown_dimension, metrics):    
+    int_metrics = ["Impressions", "Clicks", "Transactions", "Conversions", "Sessions", "Thruplays", "3-Second Video Plays","Views"]
+    pct_metrics = ["CTR", "Conversion Rate", "ROAS", "Impression Share", "Abs. Top Impression Share", "View Rate", "Hook Rate", "Hold Rate"]
+    gbp_metrics = ["Cost", "Transaction Revenue", "CPA", "CPC", "AOV"]
 
     output = {}
 
     for _, row in df_pivot.iterrows():
-        platform = row[client['dimension']]
+        platform = row[breakdown_dimension]
         output[platform] = {}
 
         for metric in metrics: 

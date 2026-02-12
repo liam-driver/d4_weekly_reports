@@ -3,6 +3,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 import numpy as np
 import json
+from pandas.tseries.offsets import MonthEnd, DateOffset
 
 
 def build_plan_json_from_sheet():
@@ -75,19 +76,24 @@ def get_tasks(df, plan_type):
     mask = (cat == "Active Workstream") | (cat == "")
     df = df.loc[mask]
 
-    # Get the mask for current
-    now = pd.Timestamp.now()
-    now = now.replace(day=1)
-    if now.day <= 5:
-        now = now.replace(day=1) - pd.Timedelta(days=1)
-    first_of_current_month = pd.to_datetime(now.replace(day=1).normalize(), dayfirst=True, errors="coerce", utc=True)
-    df["Start Date"] = pd.to_datetime(df["Start Date"], dayfirst=True, errors="coerce", utc=True)
-    df["End Date"] = pd.to_datetime(df["End Date"], dayfirst=True, errors="coerce", utc=True)
-    if plan_type == 'current':
-        end = df["End Date"]
-        mask = (end >= first_of_current_month) | end.isna()
-        df = df.loc[mask]
+    # --- pick the "reporting month" (current, unless we're in the first 5 days) ---
+    today = pd.Timestamp.now(tz="UTC").normalize()
 
+    report_month_anchor = today
+    if today.day <= 5:
+        report_month_anchor = today - DateOffset(months=1)
+
+    month_start = report_month_anchor.replace(day=1)
+    month_end = month_start + MonthEnd(0)
+
+    # --- parse dates once ---
+    df["Start Date"] = pd.to_datetime(df["Start Date"], dayfirst=True, errors="coerce", utc=True)
+    df["End Date"]   = pd.to_datetime(df["End Date"],   dayfirst=True, errors="coerce", utc=True)
+
+    if plan_type == "current":
+        mask = ((df["Start Date"] <= month_end) & (df["End Date"] >= month_start)) | df["End Date"].isna()
+        df = df.loc[mask].copy()
+    
     # Create a list of tasks, each task is a json objected appended to the 'task' list
     tasks=[]
     for idx, row in df.iterrows():
