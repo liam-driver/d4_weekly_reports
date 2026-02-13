@@ -17,8 +17,6 @@ def get_funnel_data(client, breakdown_dimension, table_type):
     metrics = [col for col in df.columns.values if col not in ['Period', breakdown_dimension]]
     df = pivot_df(df, breakdown_dimension, metrics)
     final_data = df_to_json(df, breakdown_dimension, metrics)
-    with open("storage/funnel_data.json", "w", encoding="utf-8") as f:
-        json.dump(final_data, f, ensure_ascii=False, indent=2)
     return final_data
 
 def get_llm_data(client, breakdown_dimension, table_type):
@@ -26,7 +24,6 @@ def get_llm_data(client, breakdown_dimension, table_type):
     df = apply_filters(df, client, breakdown_dimension)
     ad_channels = df['Ad Channel'].dropna().unique().tolist()
     final_data = {}
-    print(ad_channels)
     for channel in ad_channels:
         if channel not in ['Combined', 'Dispaly','Shopping', 'Paid Search', 'Paid Social', 'Paid Social Static', 'Paid Social Video', 'Video']:
             continue
@@ -67,8 +64,6 @@ def get_llm_data(client, breakdown_dimension, table_type):
         metrics = [col for col in df_llm.columns.values if col not in ['Period', 'Ad Platform']]
         df_llm = pivot_df(df_llm, 'Ad Platform', metrics)
         final_data[channel] = df_to_json(df_llm, 'Ad Platform', metrics)
-    with open("storage/llm_data.json", "w", encoding="utf-8") as f:
-        json.dump(final_data, f, ensure_ascii=False, indent=2)
     return(final_data)
 
 # Initialise the dataframe

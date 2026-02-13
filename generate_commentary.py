@@ -15,6 +15,8 @@ def generate_commentary(client):
             "report_start_date": client['start_date_string'],
             "report_end_date": client['end_date_string'],
             "monthly_budget": client['budget'],
+            "run_rate": client['run_rate'],
+            "cost_to_date": client['paid_data']['Total']['Cost']['curr'],
             "reporting_period": client['comparison_dates'],
             "client_context": client['client_context'],
             "holistic_plans": client['holistic_plans'],
@@ -100,7 +102,9 @@ def generate_commentary(client):
             "- overall_data: this is a json object that has the overall site data, taken from GA4, from the current period, compared to our comparison period. This should be used for extra context for paid data so that we can compare it to other channels, like Organic, and lets us review how holistic plans are performing\n"
             "- report_start_date: This is the date where the reporting period begins/\n"
             "- report_end_date: This is the date where the reporting period ends\n"
-            "- monthly_budget: this is the monthly budget for the current reporting period"
+            "- monthly_budget: this is the monthly budget for the current reporting period\n"
+            "- run_rate: this is the current run rate for the period"
+            "- cost_to_date: this is the total media spend for the current month"
             "- reporting_period: this states the period of the report and states the data we are using as comparison. It can be one of three things:\n" \
             "   - MTD Yearly Comparison: this means that the data period is month to date, and the comparison is the same date range last year\n"
             "   - MTD Monthly Comparison: this means that the data period is month to date, and the comparison is the same date range last month\n"
@@ -135,16 +139,18 @@ def generate_commentary(client):
                     "Deliverables:\n"
                         "1) plan_overview\n"
                             "This is a direct reference to the 90 day plans which have been sent over through the plans_90_day json. Use this to create the following for EACH TASK that is attached in the JSON, irregardless of what category it falls under.:\n"
-                                "task, description, status: These are all just the corresponding values that have been sent over in the JSON\n"
-                                "start_date, end_date: convert these from iso format into the british standard date format (dd/mm/yyyy)\n"
-                                "summary: this is a more basic client friendly version of the description, make it a one sentence summary that is to the point and not wrapped in marketing fluff\n"
+                                "- Ensure that the 'status' of the plan is set to 'current' if we are incorporating it into our plans, we only use the 'old' status plans as context\n"
+                                "- Task, description, status: These are all just the corresponding values that have been sent over in the JSON\n"
+                                "- Start_date, end_date: convert these from iso format into the british standard date format (dd/mm/yyyy)\n"
+                                "- Summary: this is a more basic client friendly version of the description, make it a one sentence summary that is to the point and not wrapped in marketing fluff\n"
                         "2) performance_overview:\n"
                             "- A 2-4 sentence summary of paid_data and overall_data compared to the the 'holistic_plans' and 'paid_plans' how are we doing when it comes to achieving these goals. We want the focus to be on paid points, but frame it within the context of the holistic plans and the overall data we are seeing on the webstie\n"
                             "- When bringing in actual data from paid_data and overall_data, only use data that explicitly aligns with the kpis that have been given to you is the 'kpis' secion.\n"
                             "- You are allowed to use data to back up the statements, but be sparing, this is a quick human readable paaragraph for stakeholders\n"
-                            "- Include a sentence on current spend to date. Use spend, run rate, and budget to come to these conclusions.\n"
+                            "- Include a sentence on current spend to date. Use cost_to_date for the total spend this month, run_rate to see what the predicted cost at the end of the month, and budget to find the monthly budget for the client.\n"
                         "3) performance_points: \n"
-                            "- For the summary, outline the problem, show the evidence from the data and assess why this may have happened using all the context provided to you. If there are any potential suggestions provide them"
+                            "- The title should be outline what point is being made and reference the context of the data, e.g. For Microsoft Ads: Increased Microsoft Ads Impressions, if looking at overall (Overall decrease in Conversion Rate)\n"
+                            "- For the summary, outline the problem, show the evidence from the data and assess why this may have happened using all the context provided to you. If there are any potential suggestions provide them\n"
                             "- Try to be concise with the description, the points need to be quite glanceable\n"
                             "- The first 2 points will be related to the 'kpis' provided, you don't need to reference every kpi, it can be whichever you deem most relevant\n"
                             "- The rest of the points will be related to specific ad channels. Look at the each channel in the paid data and output at least 1 point (license to do more than 1 up to 2) for each channel that has been defined, if there are 5 channels, then there needs to be at least 5 channel specific points.If there are any channels that are seeing sharp changes in performance, if any metrics are seeing any sharp shifts when compared to the comparison period, if there are any potential gaps you feel you've identified\n"
