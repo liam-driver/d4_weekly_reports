@@ -72,7 +72,7 @@ def paid_lead_gen(df, breakdown_dimension):
 
 # Paid Search Ecommerce
 def paid_search_ecommerce(df, breakdown_dimension, headers):
-    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[13], headers[14], headers[15], headers[16], headers[17]]
+    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[13], headers[14], headers[15], headers[16]]
     numeric_headers = headers[2:]
     df_grouped = df[headers].copy()
     df_grouped[numeric_headers] = df_grouped[numeric_headers].apply(pd.to_numeric, errors="coerce")
@@ -127,7 +127,7 @@ def paid_search_ecommerce(df, breakdown_dimension, headers):
     )
     df_grouped['Abs. Top Impression Share'] = safe_div(
         df_grouped['Total Absolute Top Impressions'],
-        df_grouped['Total Eligible Absolute Top Impressions – Estimated'],
+        df_grouped['Search Impressions'],
         multiplier = 100
     )
 
@@ -136,7 +136,7 @@ def paid_search_ecommerce(df, breakdown_dimension, headers):
 # Paid Search Lead Gen
 def paid_search_lead_gen(df, breakdown_dimension, headers):
     # Group, filter and clean Dataframes
-    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[13], headers[14], headers[15], headers[16]]
+    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[13], headers[14], headers[15]]
     numeric_headers = headers[2:]
     df_grouped = df[headers].copy()
     df_grouped[numeric_headers] = df_grouped[numeric_headers].apply(pd.to_numeric, errors="coerce")
@@ -184,14 +184,14 @@ def paid_search_lead_gen(df, breakdown_dimension, headers):
     )
     df_grouped['Abs. Top Impression Share'] = safe_div(
         df_grouped['Total Absolute Top Impressions'],
-        df_grouped['Total Eligible Absolute Top Impressions – Estimated'],
+        df_grouped['Search Impressions'],
         multiplier = 100
     )
     return(df_grouped)
 
 # Paid Shopping Ecommerce
 def paid_shopping_ecommerce(df, breakdown_dimension, headers):
-    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[13], headers[14], headers[16]]
+    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[13], headers[14], headers[15]]
     numeric_headers = headers[2:]
     df_grouped = df[headers].copy()
     df_grouped[numeric_headers] = df_grouped[numeric_headers].apply(pd.to_numeric, errors="coerce")
@@ -296,7 +296,7 @@ def paid_shopping_lead_gen(df, breakdown_dimension, headers):
 # Paid Video Lead gen
 def paid_video_lead_gen(df, breakdown_dimension, headers):
     # Group, filter and clean Dataframes
-    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[17]]
+    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[16], headers[17], headers[18]]
     numeric_headers = headers[2:]
     df_grouped = df[headers].copy()
     df_grouped[numeric_headers] = df_grouped[numeric_headers].apply(pd.to_numeric, errors="coerce")
@@ -314,7 +314,9 @@ def paid_video_lead_gen(df, breakdown_dimension, headers):
         numeric_headers[1]: 'Clicks',
         numeric_headers[2]: 'Cost',
         numeric_headers[3]: 'Conversions',
-        numeric_headers[4]: 'Views'
+        numeric_headers[4]: 'Views',
+        numeric_headers[5]: 'Hooks',
+        numeric_headers[6]: 'Holds'
         })
 
     # Get Secondary Metrics
@@ -343,11 +345,21 @@ def paid_video_lead_gen(df, breakdown_dimension, headers):
         df_grouped['Impressions'],
         multiplier = 100
     )
+    df_grouped['Hook Rate'] = safe_div(
+        df_grouped['Hooks'],
+        df_grouped['Impressions'],
+        multiplier = 100
+    )
+    df_grouped['Hold Rate'] = safe_div(
+        df_grouped['Holds'],
+        df_grouped['Impressions'],
+        multiplier = 100
+    )
     return(df_grouped)
 
 # Paid Video Ecommerce
 def paid_video_ecommerce(df, breakdown_dimension, headers):
-    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[13], headers[18]]
+    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[13], headers[17],headers[18],headers[19]]
     numeric_headers = headers[2:]
     df_grouped = df[headers].copy()
     df_grouped[numeric_headers] = df_grouped[numeric_headers].apply(pd.to_numeric, errors="coerce")
@@ -366,7 +378,9 @@ def paid_video_ecommerce(df, breakdown_dimension, headers):
         numeric_headers[2]: 'Cost',
         numeric_headers[3]: 'Transactions',
         numeric_headers[4]: 'Transaction Revenue',
-        numeric_headers[5]: 'Views'
+        numeric_headers[5]: 'Views',
+        numeric_headers[6]: 'Hooks',
+        numeric_headers[7]: 'Holds'
         })
 
     # Get Secondary Metrics
@@ -396,8 +410,19 @@ def paid_video_ecommerce(df, breakdown_dimension, headers):
         df_grouped['Transactions'],
         multiplier = 1
     )
+
     df_grouped['View Rate'] = safe_div(
         df_grouped['Views'],
+        df_grouped['Impressions'],
+        multiplier = 100
+    )
+    df_grouped['Hook Rate'] = safe_div(
+        df_grouped['Hooks'],
+        df_grouped['Impressions'],
+        multiplier = 100
+    )
+    df_grouped['Hold Rate'] = safe_div(
+        df_grouped['Holds'],
         df_grouped['Impressions'],
         multiplier = 100
     )
@@ -504,7 +529,7 @@ def paid_display_ecommerce(df, breakdown_dimension, headers):
 # Paid Social Video Lead gen
 def paid_social_video_lead_gen(df, breakdown_dimension, headers):
     # Group, filter and clean Dataframes
-    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[18], headers[19]]
+    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[17], headers[18]]
     numeric_headers = headers[2:]
     df_grouped = df[headers].copy()
     df_grouped[numeric_headers] = df_grouped[numeric_headers].apply(pd.to_numeric, errors="coerce")
@@ -522,8 +547,8 @@ def paid_social_video_lead_gen(df, breakdown_dimension, headers):
         numeric_headers[1]: 'Clicks',
         numeric_headers[2]: 'Cost',
         numeric_headers[3]: 'Conversions',
-        numeric_headers[4]: '3-Second Video Plays',
-        numeric_headers[5]: 'Thruplays'
+        numeric_headers[4]: 'Hooks',
+        numeric_headers[5]: 'Holds'
         })
 
     # Get Secondary Metrics
@@ -548,12 +573,12 @@ def paid_social_video_lead_gen(df, breakdown_dimension, headers):
         multiplier = 1
     )
     df_grouped['Hook Rate'] = safe_div(
-        df_grouped['3-Second Video Plays'],
+        df_grouped['Hooks'],
         df_grouped['Impressions'],
         multiplier = 100
     )
     df_grouped['Hold Rate'] = safe_div(
-        df_grouped['Thruplays'],
+        df_grouped['Holds'],
         df_grouped['Impressions'],
         multiplier = 100
     )
@@ -561,7 +586,7 @@ def paid_social_video_lead_gen(df, breakdown_dimension, headers):
 
 # Paid Social Video Ecommerce
 def paid_social_video_ecommerce(df, breakdown_dimension, headers):
-    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[13], headers[19], headers[20]]
+    headers = ['Period', breakdown_dimension, headers[9], headers[10], headers[11], headers[12], headers[13], headers[18], headers[19]]
     numeric_headers = headers[2:]
     df_grouped = df[headers].copy()
     df_grouped[numeric_headers] = df_grouped[numeric_headers].apply(pd.to_numeric, errors="coerce")
@@ -580,8 +605,8 @@ def paid_social_video_ecommerce(df, breakdown_dimension, headers):
         numeric_headers[2]: 'Cost',
         numeric_headers[3]: 'Transactions',
         numeric_headers[4]: 'Transaction Revenue',
-        numeric_headers[5]: '3-Second Video Plays',
-        numeric_headers[6]: 'Thruplays'
+        numeric_headers[5]: 'Hooks',
+        numeric_headers[6]: 'Holds'
         })
 
     # Get Secondary Metrics
@@ -612,12 +637,12 @@ def paid_social_video_ecommerce(df, breakdown_dimension, headers):
         multiplier = 1
     )
     df_grouped['Hook Rate'] = safe_div(
-        df_grouped['3-Second Video Plays'],
+        df_grouped['Hooks'],
         df_grouped['Impressions'],
         multiplier = 100
     )
     df_grouped['Hold Rate'] = safe_div(
-        df_grouped['Thruplays'],
+        df_grouped['Holds'],
         df_grouped['Impressions'],
         multiplier = 100
     )

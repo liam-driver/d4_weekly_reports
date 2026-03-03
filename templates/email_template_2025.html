@@ -1,11 +1,8 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>{{ client.name }} Weekly PPC Report ({{ client.start_date }} - {{ client.end_date }})</title>
-</head>
 <body>
-  <p><b>{{ client.name }} Weekly PPC Report ({{ client.start_date_string }} - {{ client.end_date_string }})</b></p>
-  <p><i>Data used: {{client.comparison_dates }}</i></p>
+  <p><b>{{ client.name }} Weekly PPC Report: {{client.comparison_dates }}</b></p>
+  <p><b>Report Date Period:</b> ({{ client.start_date_string }} - {{ client.end_date_string }}) vs ({{ client.compare_start_date_string }} - {{ client.compare_end_date_string }})</p>
   <br>
   <p><b>Live Dashboard Link: {{client.dashboard}}</b></p>
   <p><b>90 Day Plan: {{client.plan}}</b></p>

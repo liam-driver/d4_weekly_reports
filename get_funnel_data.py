@@ -83,41 +83,14 @@ def initialise_df(client):
 # Mask the dataframes so that they are within the correct date range
 def apply_filters(df, client, breakdown_dimension):
     # Initialise dates
-    now = pd.Timestamp.now()
-    yday = (now - pd.DateOffset(days=2)).normalize()
-    
-    # Create masks for date periods
-    if client['comparison_dates'] == 'MTD Yearly Comparison':
-        start_date = client['start_date']
-        end_date = yday
-        compare_start_date = (start_date - pd.DateOffset(years=1)).normalize()
-        compare_end_date = (end_date - pd.DateOffset(years=1)).normalize()
-        if now.day <= 5:
-            end_date = start_date - MonthEnd(0)
-            compare_start_date = (start_date - pd.DateOffset(years=1)).normalize()
-            compare_end_date = (end_date - pd.DateOffset(years=1)).normalize()
-    
-    if client['comparison_dates'] == 'MTD Monthly Comparison':
-        start_date = client['start_date']
-        end_date = yday
-        compare_start_date = (start_date - pd.DateOffset(months=1)).normalize()
-        compare_end_date = (end_date - pd.DateOffset(months=1)).normalize()
-        if now.day <= 5:
-            end_date = start_date - MonthEnd(0)
-            compare_start_date = (start_date - pd.DateOffset(months=1)).normalize()
-            compare_end_date = (end_date - pd.DateOffset(months=1)).normalize()
 
-    if client['comparison_dates'] == 'WTD Weekly Comparison':
-        end_date = yday
-        compare_start_date = (start_date - pd.DateOffset(days=7)).normalize()
-        compare_end_date = (end_date - pd.DateOffset(days=7)).normalize()
     
     # Apply Date Mask
-    mask = ((df[breakdown_dimension]!='') & (((df['Date'] >= start_date) & (df['Date'] <= end_date)) | (df['Date'] >= compare_start_date) & (df['Date'] <= compare_end_date)))
+    mask = ((df[breakdown_dimension]!='') & (((df['Date'] >= client['start_date']) & (df['Date'] <= client['end_date'])) | (df['Date'] >= client['compare_start_date']) & (df['Date'] <= client['compare_end_date'])))
     df = df.loc[mask]
     # Add in helper columns to categorise date periods
-    df.loc[df['Date'] >= start_date, 'Period'] = 'Current'
-    df.loc[df['Date'] < start_date, 'Period'] = 'Previous'
+    df.loc[df['Date'] >= client['start_date'], 'Period'] = 'Current'
+    df.loc[df['Date'] < client['start_date'], 'Period'] = 'Previous'
     return (df)
 
 # Add in secondary metrics to the dataframe, such as ROAS
