@@ -1,12 +1,15 @@
-from email.mime.text import MIMEText
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import argparse
 import json
+from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Environment, FileSystemLoader
-from oauth2client.service_account import ServiceAccountCredentials
 import smtplib
 
 
-# Send email
 def send_email(client):
     # Initialise the html template
     env = Environment(loader=FileSystemLoader('templates'))
@@ -34,4 +37,19 @@ def send_email(client):
         smtp.starttls()
         smtp.ehlo()
         smtp.login(wr_email, wr_password)
-        smtp.sendmail(wr_email, secrets["send_email"], msg.as_string()) 
+        smtp.sendmail(wr_email, secrets["send_email"], msg.as_string())
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--client", required=True, help="Client name as it appears in config.json")
+    args = parser.parse_args()
+
+    with open(f"storage/{args.client}_data.json", "r", encoding="utf-8") as f:
+        client = json.load(f)
+
+    with open(f"storage/{args.client}_commentary.json", "r", encoding="utf-8") as f:
+        client["commentary"] = json.load(f)
+
+    send_email(client)
+    print(f"Email sent for {args.client}")

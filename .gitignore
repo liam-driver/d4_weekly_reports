@@ -1,34 +1,34 @@
 # Ignore everything by default
 *
 
-# But keep the .gitignore itself
+# Keep this file
 !.gitignore
 
-# Keep core files
-!config_dates.py
-!error_logger.py
-!generate_commentary.py
-!get_run_rate.py
-!get_funnel_data.py
-!get_plans.py
-!main.py
-!safe_div.py
-!send_email.py
-!requirements.txt
-!README.*
-!get_config.py
-!generate_df.py
-
-# Keep the templates directory and all its contents
+# Allow directories
+!core/
+!weekly_reports/
+!mcp_server/
+!.claude/
 !templates/
+
+# Allow contents
+!core/**
+!weekly_reports/**
+!mcp_server/**
+!.claude/**
 !templates/**
 
-# Still ignore common environment/secret files if they appear at any path
-.env
-*.env
-.venv/
+# Root-level files to keep
+!requirements.txt
+!README.*
+
+# Override: always ignore these regardless of above rules
+secrets.json
+creds.json
+storage/
 venv/
+.venv/
 __pycache__/
 *.pyc
-creds.json
-secrets.json
+*.env
+.env

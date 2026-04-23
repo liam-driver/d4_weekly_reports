@@ -4,7 +4,6 @@ import locale
 
 def get_run_rate(client):
     current_spend = float(client['paid_data']['Total']['Cost']['curr'].replace("£", "").replace(",", ""))
-    # Dummy spend value — replace with real variable when ready
     start_date = client['start_date']
     end_date = client['end_date']
 
@@ -30,3 +29,24 @@ def get_run_rate(client):
     run_rate = avg_daily_spend * total_days_in_month
 
     return f"£{float(run_rate):,.2f}"
+
+
+def tat_get_run_rate(client, current_spend):
+    """
+    Returns projected monthly spend as a raw float.
+    If end_date is the last day of the month, returns current_spend as-is.
+    """
+    start_date = client['start_date']
+    end_date = client['end_date']
+
+    is_end_of_month = end_date == (start_date + MonthEnd(0)).normalize()
+    if is_end_of_month:
+        return float(current_spend)
+
+    days_elapsed = (end_date - start_date).days
+    if days_elapsed <= 0:
+        return float(current_spend)
+
+    total_days_in_month = (start_date + MonthEnd(0)).day
+    avg_daily_spend = float(current_spend) / days_elapsed
+    return avg_daily_spend * total_days_in_month

@@ -4,9 +4,9 @@ import json
 import locale
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from safe_div import safe_div
+from core.safe_div import safe_div
 from pandas.tseries.offsets import MonthEnd
-from generate_df import *
+from weekly_reports.generate_df import *
 
 
 # Main workflow
@@ -15,6 +15,7 @@ def get_funnel_data(client, table_type):
     date_range = set_date_range(client, table_type)
     breakdown_dimension = set_breakdown_dimensions(client,table_type)
     df = apply_filters(df, client, breakdown_dimension, date_range)
+    
     # Basic Compare
     if table_type in ["paid_lead_gen", "paid_ecommerce","overall_lead_gen", "overall_ecommerce"]:
         final_data = get_comparison_data(df, breakdown_dimension, table_type)
@@ -26,8 +27,8 @@ def get_funnel_data(client, table_type):
     # 90 Day review
     elif table_type in ["time_series_lead_gen", "time_series_ecommerce"]:
         final_data = get_llm_data(client, breakdown_dimension, df, table_type)
-
     return(final_data)
+
 
 # Set the date range that the dataset will be filtered by
 def set_date_range(client, table_type):

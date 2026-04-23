@@ -3,7 +3,7 @@ import numpy as np
 import locale
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from safe_div import safe_div
+from core.safe_div import safe_div
 from pandas.tseries.offsets import MonthEnd
 
 

@@ -1,8 +1,11 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import gspread
 import json
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
-from error_logger import log_error
+from core.error_logger import log_error
 
 
 def init_clients():
@@ -61,6 +64,8 @@ def init_clients():
         # Optional
         clients_tmp['dashboard'] = ws_config.at[1, column]
         clients_tmp['budget'] = ws_config.at[2, column][1:]
+        clients_tmp['tat_budget'] = ws_config.at[14, column][1:]
+        clients_tmp['slack_channel_id'] = ws_config.at[15, column]
         clients_tmp['client_context'] = ws_config.at[6, column]
         clients_tmp['holistic_plans'] = ws_config.at[9, column]
         clients_tmp['paid_plans'] = ws_config.at[10, column]

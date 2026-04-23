@@ -16,7 +16,7 @@ def config_dates(client):
         end_date = yday
 
         # If within first 5 days, switch to last full month
-        if now.day <= 5:
+        if now.day <= 7:
             start_date = (first_of_current_month - pd.DateOffset(months=1)).normalize()
             end_date = start_date + MonthEnd(0)
 
@@ -38,7 +38,7 @@ def config_dates(client):
         end_date = yday
 
         # If within first 5 days, switch to last full month
-        if now.day <= 5:
+        if now.day <= 7:
             start_date = (first_of_current_month - pd.DateOffset(months=1)).normalize()
             end_date = start_date + MonthEnd(0)
 

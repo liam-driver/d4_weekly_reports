@@ -1,10 +1,14 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import json
 from datetime import datetime
-from error_logger import log_error
-from config_dates import config_dates
-from get_funnel_data import get_funnel_data, get_llm_data
-from get_run_rate import get_run_rate
-from generate_commentary import generate_commentary
+from core.error_logger import log_error
+from core.config_dates import config_dates
+from core.get_funnel_data import get_funnel_data
+from core.get_run_rate import get_run_rate
+from core.generate_commentary import generate_weekly_commentary
 from send_email import send_email
 
 
@@ -42,7 +46,7 @@ def main():
             continue
 
         try:
-            client['commentary'] = generate_commentary(client)
+            client['commentary'] = generate_weekly_commentary(client)
         except:
             log_error(f"{client['name']} Report Skipped: misconfigured Commentary")
             continue

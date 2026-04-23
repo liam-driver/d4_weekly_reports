@@ -1,5 +1,6 @@
 import pandas as pd
-from safe_div import safe_div
+import json
+from core.safe_div import safe_div
 
 def get_total_row(df, period_label, dim_cols=2):
     # Initialise the total row as a dictionary
@@ -774,6 +775,7 @@ def overall_ecommerce(df, breakdown_dimension, table_type):
         curr_df = get_total_row(df_grouped[df_grouped["Period"].eq("Current")].copy(), "Current")
         prev_df = get_total_row(df_grouped[df_grouped["Period"].eq("Previous")].copy(), "Previous")
         df_grouped = pd.concat([curr_df, prev_df], ignore_index=True)
+
     
     # Standardise Column Names
     df_grouped = df_grouped.rename(columns={
@@ -823,4 +825,167 @@ def overall_lead_gen(df, breakdown_dimension, table_type):
         df_grouped['Sessions'],
         multiplier = 100
     )
+    return(df_grouped)
+
+
+def graph_ecommerce(df, filters, x_col, start, end):
+    # Apply date range mask
+    mask = (df['Date'] >= start) & (df['Date'] <= end)
+    df = df[mask]
+    
+    # Initialise headers and dimensions
+    if isinstance(filters, str):
+        filters = json.loads(filters)
+
+    dimensions = list(dict.fromkeys([x_col] + list(filters.keys())))
+    headers = list(df.columns.values)
+    numeric_headers = headers[8:20]
+
+    headers = dimensions + numeric_headers
+    df_grouped = df[headers].copy()
+
+    # Apply filters
+    for dim, val in filters.items():
+        if isinstance(val, list):
+            df_grouped = df_grouped[df_grouped[dim].isin(val)]
+        else:
+            df_grouped = df_grouped[df_grouped[dim] == val]
+
+    # Group
+    df_grouped[numeric_headers] = df_grouped[numeric_headers].apply(pd.to_numeric, errors="coerce")
+    df_grouped = df_grouped.groupby(x_col, as_index=False)[numeric_headers].sum()
+
+    # Rename Columns
+    df_grouped = df_grouped.rename(columns={
+        numeric_headers[3]: 'Cost',
+        numeric_headers[5]: 'Transaction Revenue',
+        })
+
+    # Get Secondary Metrics
+    df_grouped['CTR'] = safe_div(
+        df_grouped['Clicks'],
+        df_grouped['Impressions'],
+        multiplier = 100
+    )
+    df_grouped['CPC'] = safe_div(
+        df_grouped['Cost'],
+        df_grouped['Clicks'],
+        multiplier = 1
+    ) 
+    df_grouped['Conversion Rate'] = safe_div(
+        df_grouped['Transactions'],
+        df_grouped['Clicks'],
+        multiplier = 100
+    )
+
+    df_grouped['ROAS'] = safe_div(
+        df_grouped['Transaction Revenue'],
+        df_grouped['Cost'],
+        multiplier = 100
+    )
+    df_grouped['AOV'] = safe_div(
+        df_grouped['Transaction Revenue'],
+        df_grouped['Transactions'],
+        multiplier = 1
+    )
+    df_grouped['Hook Rate'] = safe_div(
+        df_grouped['Hooks'],
+        df_grouped['Impressions'],
+        multiplier = 100
+    )
+    df_grouped['Hold Rate'] = safe_div(
+        df_grouped['Holds'],
+        df_grouped['Impressions'],
+        multiplier = 100
+    )
+
+    df_grouped['Impression Share'] = safe_div(
+        df_grouped['Search Impressions'],
+        df_grouped['Total Eligible Impressions – Estimated'],
+        multiplier = 100
+    )
+    df_grouped['Abs. Top Impression Share'] = safe_div(
+        df_grouped['Total Absolute Top Impressions'],
+        df_grouped['Search Impressions'],
+        multiplier = 100
+    )
+
+    return(df_grouped)
+
+def graph_lead_gen(df, filters, x_col, start, end):
+    # Apply date range mask
+    mask = (df_grouped['Date'] >= start) & (df_grouped['Date'] <= end)
+    df_grouped = df_grouped[mask]
+
+    # Initialise headers and dimensions
+    dimensions = list(['Date', x_col] + list(filters.keys()))
+    headers = list(df.columns.values)
+    numeric_headers = headers[8:20]
+
+    headers = dimensions +  numeric_headers
+    df_grouped = df[headers].copy()
+
+
+    # Apply filters
+    for dim, val in filters.items():
+        if isinstance(val, list):
+            df_grouped = df_grouped[df_grouped[dim].isin(val)]
+        else:
+            df_grouped = df_grouped[df_grouped[dim] == val]
+
+    # Group
+    df_grouped[numeric_headers] = df_grouped[numeric_headers].apply(pd.to_numeric, errors="coerce")
+    df_grouped = df_grouped.groupby(x_col, as_index=False)[numeric_headers].sum()
+
+    # Rename Columns
+    df_grouped = df_grouped.rename(columns={
+        numeric_headers[3]: 'Cost',
+        numeric_headers[4]: 'Conversions',
+        })
+
+    # Get Secondary Metrics
+    df_grouped['CTR'] = safe_div(
+        df_grouped['Clicks'],
+        df_grouped['Impressions'],
+        multiplier = 100
+    )
+    df_grouped['CPC'] = safe_div(
+        df_grouped['Cost'],
+        df_grouped['Clicks'],
+        multiplier = 1
+    ) 
+    df_grouped['Conversion Rate'] = safe_div(
+        df_grouped['Conversions'],
+        df_grouped['Clicks'],
+        multiplier = 100
+    )
+
+    df_grouped['CPA'] = safe_div(
+        df_grouped['Cost'],
+        df_grouped['Conversions'],
+        multiplier = 100
+    )
+
+    df_grouped['Hook Rate'] = safe_div(
+        df_grouped['Hooks'],
+        df_grouped['Impressions'],
+        multiplier = 100
+    )
+    df_grouped['Hold Rate'] = safe_div(
+        df_grouped['Holds'],
+        df_grouped['Impressions'],
+        multiplier = 100
+    )
+
+    df_grouped['Impression Share'] = safe_div(
+        df_grouped['Search Impressions'],
+        df_grouped['Total Eligible Impressions – Estimated'],
+        multiplier = 100
+    )
+    df_grouped['Abs. Top Impression Share'] = safe_div(
+        df_grouped['Total Absolute Top Impressions'],
+        df_grouped['Search Impressions'],
+        multiplier = 100
+    )
+
     return(df_grouped)
