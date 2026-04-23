@@ -8,6 +8,9 @@ from mcp.server.fastmcp import FastMCP
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+with open(os.path.join(PROJECT_ROOT, "storage", "secrets.json"), "r") as f:
+    _secrets = json.load(f)
+
 mcp = FastMCP("weekly-reports")
 
 
@@ -55,4 +58,25 @@ def send_weekly_report(client_name: str, commentary: str) -> str:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="sse")
+    import uvicorn
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.middleware import Middleware
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+    from starlette.responses import Response
+
+    SECRET = _secrets.get("mcp_secret_key", "")
+    if not SECRET:
+        raise RuntimeError("mcp_secret_key missing from secrets.json")
+
+    class AuthMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            if request.headers.get("Authorization") != f"Bearer {SECRET}":
+                return Response("Unauthorized", status_code=401)
+            return await call_next(request)
+
+    app = Starlette(
+        routes=[Mount("/", app=mcp.sse_app())],
+        middleware=[Middleware(AuthMiddleware)]
+    )
+    uvicorn.run(app, host="0.0.0.0", port=8000)

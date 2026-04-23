@@ -7,6 +7,8 @@
 # Allow directories
 !core/
 !weekly_reports/
+!monthly_reports/
+!traps_and_tripwires/
 !mcp_server/
 !.claude/
 !templates/
@@ -14,6 +16,8 @@
 # Allow contents
 !core/**
 !weekly_reports/**
+!monthly_reports/**
+!traps_and_tripwires/**
 !mcp_server/**
 !.claude/**
 !templates/**
