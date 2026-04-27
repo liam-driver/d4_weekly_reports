@@ -2,6 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(./venv/Scripts/python.exe -c ' *)"
+      
     ]
-  }
+    
+  },
+  "Authorization": "Bearer any-secret-string-you-choose"
 }
+

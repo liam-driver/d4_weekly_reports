@@ -495,6 +495,7 @@ def generate_monthly_slide_content(client):
             "- dimensions.x must be one of the values in dimensions.x above.\n"
             "- dimensions.group_by must be one of the values in dimensions.group_by above.\n"
             "- metrics must only contain values from the metrics list above.\n"
+            "- line charts must have a maximum of 2 metrics. Do not add a third metric to a line chart — use a different graph type instead.\n"
             "- graph_type must be one of the values in graph_types above.\n"
             "- style must be one of the values in styles above.\n"
             "- filter keys must exactly match a key in filter_values above.\n"

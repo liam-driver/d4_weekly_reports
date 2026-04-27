@@ -71,7 +71,9 @@ if __name__ == "__main__":
 
     class AuthMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
-            if request.headers.get("Authorization") != f"Bearer {SECRET}":
+            auth = request.headers.get("Authorization", "")
+            print(f"[auth] path={request.url.path} header={repr(auth)}")
+            if auth != f"Bearer {SECRET}":
                 return Response("Unauthorized", status_code=401)
             return await call_next(request)
 

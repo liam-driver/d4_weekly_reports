@@ -2,18 +2,16 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import argparse
 import shutil
 import json
-import pandas
 from datetime import datetime
 from pptx import Presentation
-from pptx.util import Pt
+from pptx.util import Pt, Inches
+from pptx.dml.color import RGBColor
+from pptx.enum.text import PP_ALIGN
 from PIL import Image
-from pptx.util import Inches
 from lxml import etree
-from core.config_dates import config_dates
-from core.get_funnel_data import get_funnel_data
-from core.get_run_rate import get_run_rate
 from core.generate_commentary import generate_monthly_slide_content
 from monthly_reports.generate_visualisation import render_graph, initialise_brand, BRAND
 
@@ -37,128 +35,179 @@ SLD_LAYOUT_BLANK = 13
 
 
 
-def generate_ppt():
-    # Init the template
+def generate_ppt(client_name):
+    data_path = f"storage/{client_name}_data.json"
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(
+            f"No data file found for '{client_name}'. "
+            f"Run: py weekly_reports/fetch_data.py --client \"{client_name}\""
+        )
+    with open(data_path, "r", encoding="utf-8") as f:
+        client = json.load(f)
+
+    client['slide_content'] = generate_monthly_slide_content(client)
+    with open(f"storage/{client_name}_monthly_content.json", "w", encoding="utf-8") as f:
+        json.dump(client['slide_content'], f, ensure_ascii=False, indent=2)
+
+    current_month = datetime.strptime(client['start_date_string'], "%d/%m/%Y").strftime("%B")
+
     shutil.copy('slides/template.pptx', 'slides/test.pptx')
     prs = Presentation('slides/test.pptx')
 
+    # Remove the single placeholder slide
+    slide_rid = prs.slides._sldIdLst[0].get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+    prs.part.drop_rel(slide_rid)
+    prs.slides._sldIdLst.remove(prs.slides._sldIdLst[0])
 
-    # Get Clients
-    with open("storage/config.json", "r") as config_json:
-            clients = json.load(config_json)
-    for client in clients:
-        if client['name'] != 'Paintnuts':
-            continue
-        # client = config_dates(client)
-        # if client["plan"] != "":
-        #     with open("storage/plans.json", "r") as plans_json:
-        #         plans = json.load(plans_json)
-        #     client["plan_json"] = plans[client["name"]]
-        # if client['account_type'] == 'Lead Gen':
-        #     client['paid_data'] = get_funnel_data(client, 'paid_lead_gen')
-        #     client['llm_data'] = get_funnel_data(client, 'llm_lead_gen')
-        #     client['timeseries_data'] = get_funnel_data(client, 'time_series_lead_gen')
-        #     client['overall_data'] = get_funnel_data(client, 'overall_lead_gen')
-        # if client['account_type'] == 'Ecommerce':
-        #     client['paid_data'] = get_funnel_data(client, 'paid_ecommerce')
-        #     client['llm_data'] = get_funnel_data(client, 'llm_ecommerce')
-        #     client['timeseries_data'] = get_funnel_data(client, 'time_series_ecommerce')
-        #     client['overall_data'] = get_funnel_data(client, 'overall_ecommerce')
-        # client['run_rate'] = get_run_rate(client)
-        # client['slide_content'] = generate_monthly_slide_content(client)
-        # with open('storage/monthly_content.json', 'w', encoding='utf-8') as f:
-        #     json.dump(client['slide_content'], f, ensure_ascii=False, indent=4)
+    # Title Slide
+    slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_COVER])
+    slide.placeholders[0].text = f'{client["name"]} Monthly Deck'
 
-        with open('storage/monthly_content.json', 'r', encoding='utf-8') as f:
-            client['slide_content'] = json.load(f)
-        # Remove the single placeholder slide
-        slide_rid = prs.slides._sldIdLst[0].get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
-        prs.part.drop_rel(slide_rid)
-        prs.slides._sldIdLst.remove(prs.slides._sldIdLst[0])
+    # Paid Separator Slide
+    slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_SECTION_SEPARATOR])
+    slide.placeholders[0].text = 'Paid Media'
 
-        # Title Slides
-        slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_COVER])
-        slide.placeholders[0].text = f'{client['name']} Monthly Deck'
+    # Overall Summary Slide
+    slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_SUNSET_SECTION_SEPARATOR])
+    slide.placeholders[0].text = 'Performance Overview'
+    slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_TITLE_AND_BODY])
+    slide.placeholders[0].text = 'Top Level View'
+    tf = slide.placeholders[4].text_frame
+    tf.text = client['slide_content']['overview']['summary']
+    for p in tf.paragraphs:
+        for run in p.runs:
+            run.font.size = Pt(14)
+    tf = slide.placeholders[1].text_frame
+    tf.clear()
+    for i, bullet in enumerate(client['slide_content']['overview']['bullets']):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.text = bullet['point']
+        p.level = 0
+    for p in tf.paragraphs:
+        for run in p.runs:
+            run.font.size = Pt(12)
+    add_kpi_boxes(slide, client)
 
-        # Paid Separator Slide
-        slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_SECTION_SEPARATOR])
-        slide.placeholders[0].text = 'Paid Media'
-
-
-# Overall Summary Slide
-        slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_SUNSET_SECTION_SEPARATOR])
-        slide.placeholders[0].text = 'Performance Overview'
+    # Trends
+    slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_SUNSET_SECTION_SEPARATOR])
+    slide.placeholders[0].text = 'Top Level Trends'
+    for trend in client['slide_content']['trends']:
         slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_TITLE_AND_BODY])
-        slide.placeholders[0].text = 'Top Level View'
+        slide.placeholders[0].text = trend['title']
+        slide.placeholders[2].text = f"{trend['graph']['date_range']['start']} to {trend['graph']['date_range']['end']}"
         tf = slide.placeholders[4].text_frame
-        tf.text = client['slide_content']['overview']['summary']
+        tf.text = trend['summary']
         for p in tf.paragraphs:
             for run in p.runs:
                 run.font.size = Pt(14)
         tf = slide.placeholders[1].text_frame
         tf.clear()
-
-        for i, bullet in enumerate(client['slide_content']['overview']['bullets']):
-            if i == 0:
-                p = tf.paragraphs[0]
-            else:
-                p = tf.add_paragraph()
+        for i, bullet in enumerate(trend['bullets']):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.text = bullet['point']
             p.level = 0
         for p in tf.paragraphs:
             for run in p.runs:
                 run.font.size = Pt(12)
-        # chart_path = render_graph(client,)
-        # add_chart_to_slide(slide, chart_path)
+        chart_path = render_graph(client, trend['graph'])
+        add_chart_to_slide(slide, chart_path)
 
-        # Trends
-        slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_SUNSET_SECTION_SEPARATOR])
-        slide.placeholders[0].text = 'Top Level Trends'
-        for trend in client['slide_content']['trends']:
-            slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_TITLE_AND_BODY])
-            slide.placeholders[0].text = trend['title']
-            slide.placeholders[2].text = f"{trend['graph']['date_range']['start']} to {trend['graph']['date_range']['end']}"
-            tf = slide.placeholders[4].text_frame
-            tf.text = trend['summary']
-            for p in tf.paragraphs:
-                for run in p.runs:
-                    run.font.size = Pt(14)
-            tf = slide.placeholders[1].text_frame
-            tf.clear()
-            for i, bullet in enumerate(trend['bullets']):
-                if i == 0:
-                    p = tf.paragraphs[0]
-                else:
-                    p = tf.add_paragraph()
-                p.text = bullet['point']
-                p.level = 0
-            for p in tf.paragraphs:
-                for run in p.runs:
-                    run.font.size = Pt(12)
-            chart_path = render_graph(client, trend['graph'])
+    # Actions
+    slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_SUNSET_SECTION_SEPARATOR])
+    slide.placeholders[0].text = f'{current_month} Actions'
+    for action in client['slide_content']['actions']:
+        slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_TITLE_AND_BODY])
+        slide.placeholders[0].text = action['task']
+        slide.placeholders[1].text = action['summary']
+        tf = slide.placeholders[4].text_frame
+        tf.text = action['status']
+        for p in tf.paragraphs:
+            for run in p.runs:
+                run.font.size = Pt(14)
+        if action['graph'] is not None:
+            slide.placeholders[2].text = f"{action['graph']['date_range']['start']} to {action['graph']['date_range']['end']}"
+            chart_path = render_graph(client, action['graph'])
             add_chart_to_slide(slide, chart_path)
-        # Actions
-        slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_SUNSET_SECTION_SEPARATOR])
-        # current_month = client['start_date'].normalize().strftime("%B")
-        slide.placeholders[0].text = f'March Actions'
-        for action in client['slide_content']['actions']:
-            slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_TITLE_AND_BODY])
-            slide.placeholders[0].text = action['task']
-            slide.placeholders[1].text = action['summary']
-            tf = slide.placeholders[4].text_frame
-            tf.text = action['status']
-            for p in tf.paragraphs:
-                for run in p.runs:
-                    run.font.size = Pt(14)
 
-            if action['graph'] is not None:
-                slide.placeholders[2].text = f"{action['graph']['date_range']['start']} to {action['graph']['date_range']['end']}"
-                chart_path = render_graph(client, action['graph'])
-                add_chart_to_slide(slide, chart_path)
+    prs.save('slides/test.pptx')
+    print(f"Saved with {len(prs.slides)} slide(s)")
 
-        prs.save('slides/test.pptx')
 
-        print(f"Saved with {len(prs.slides)} slide(s)")
+def add_kpi_boxes(slide, client):
+    paid_total = client.get('paid_data', {}).get('Total', {})
+    account_type = client.get('account_type', 'Ecommerce')
+
+    if account_type == 'Ecommerce':
+        kpis = [
+            ('Cost',    paid_total.get('Cost', {})),
+            ('Revenue', paid_total.get('Transaction Revenue', {})),
+            ('ROAS',    paid_total.get('ROAS', {})),
+        ]
+    else:
+        kpis = [
+            ('Cost',        paid_total.get('Cost', {})),
+            ('Conversions', paid_total.get('Conversions', {})),
+            ('CPA',         paid_total.get('CPA', {})),
+        ]
+
+    box_colours = [
+        RGBColor(0xFE, 0xC0, 0x42),
+        RGBColor(0xF2, 0x7D, 0x39),
+        RGBColor(0x4F, 0xA6, 0xA4),
+    ]
+    text_colour = RGBColor(0x2B, 0x2D, 0x42)
+
+    box_w = Inches(2.6)
+    box_h = Inches(1.4)
+    gap   = Inches(0.15)
+    start_x = Inches(7.1)
+    # Align the centre of the middle box (index 1) to the vertical midpoint of the slide
+    start_y = Inches(3.75) - box_h * 1.5 - gap
+
+    font_name = BRAND["font"]
+
+    for i, (label, data) in enumerate(kpis):
+        y = start_y + i * (box_h + gap)
+        shape = slide.shapes.add_shape(1, start_x, y, box_w, box_h)
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = box_colours[i]
+        shape.line.fill.background()
+
+        tf = shape.text_frame
+        tf.word_wrap = False
+        tf.margin_top    = Inches(0.1)
+        tf.margin_bottom = Inches(0.08)
+        tf.margin_left   = Inches(0.1)
+        tf.margin_right  = Inches(0.1)
+
+        # Metric label
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        run = p.add_run()
+        run.text = label
+        run.font.name = font_name
+        run.font.size = Pt(10)
+        run.font.bold = True
+        run.font.color.rgb = text_colour
+
+        # Current value
+        p2 = tf.add_paragraph()
+        p2.alignment = PP_ALIGN.CENTER
+        run2 = p2.add_run()
+        run2.text = data.get('curr', '—')
+        run2.font.name = font_name
+        run2.font.size = Pt(17)
+        run2.font.bold = True
+        run2.font.color.rgb = text_colour
+
+        # vs previous  (% change)
+        p3 = tf.add_paragraph()
+        p3.alignment = PP_ALIGN.CENTER
+        run3 = p3.add_run()
+        run3.text = f"vs {data.get('prev', '—')}  ({data.get('pct', '—')})"
+        run3.font.name = font_name
+        run3.font.size = Pt(9)
+        run3.font.color.rgb = text_colour
 
 
 def add_chart_to_slide(slide, chart_path, left=Inches(5), top=Inches(1.5), width=Inches(4.5)):
@@ -186,4 +235,8 @@ def add_chart_to_slide(slide, chart_path, left=Inches(5), top=Inches(1.5), width
         height=height
     )
 
-generate_ppt()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--client", required=True, help="Client name as it appears in config.json")
+    args = parser.parse_args()
+    generate_ppt(args.client)

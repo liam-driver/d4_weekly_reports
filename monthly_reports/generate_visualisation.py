@@ -1,4 +1,5 @@
 import json
+import pandas as pd
 from core.get_funnel_data import initialise_df
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -28,32 +29,34 @@ def render_graph(client, spec):
 
 def render_line_chart(graph, client):
     # ── 1. EXTRACT THE SPEC ──────────────────────────────────────────
-    # Pull the parameters Claude returned so we can use them below
-    title  = graph["title"]
+    title   = graph["title"]
     filters = graph["filters"]
-    x_col  = graph["dimensions"]["x"]   # e.g. "date"
-    metrics = graph["metrics"]          # e.g. ["sessions", "conversions"]
-    start  = graph["date_range"]["start"]
-    end    = graph["date_range"]["end"]
+    x_col   = graph["dimensions"]["x"]
+    metrics = graph["metrics"][:2]
+    start   = graph["date_range"]["start"]
+    end     = graph["date_range"]["end"]
 
-    # ── 2. Configure THE DATAFRAME ──────────────────────────────────────
-    # Initialise the dataframe and transform using the relevant function
+    # ── 2. CONFIGURE THE DATAFRAME ───────────────────────────────────
     df = initialise_df(client)
     if client['account_type'] == 'Ecommerce':
         df = graph_ecommerce(df, filters, x_col, start, end)
     else:
-        df = graph_lead_gen(df,filters, x_col, start, end)
+        df = graph_lead_gen(df, filters, x_col, start, end)
+
+    for metric in metrics:
+        df[metric] = pd.to_numeric(df[metric], errors='coerce')
 
     # ── 3. CREATE THE FIGURE ─────────────────────────────────────────
-    # fig is the overall canvas, ax is the plot area inside it
-    # figsize is width x height in inches
     fig, ax = plt.subplots(figsize=(10, 5))
+    # When multiple metrics are present, use a secondary y-axis so metrics
+    # with very different scales (e.g. Impressions vs CTR) are both visible
+    ax2 = ax.twinx() if len(metrics) > 1 else None
 
     # ── 4. PLOT EACH METRIC AS A LINE ────────────────────────────────
-    # Loop through metrics so we draw one line per metric
     for i, metric in enumerate(metrics):
-        colour = BRAND["colours"][i % len(BRAND["colours"])]  # cycles if more metrics than colours
-        ax.plot(
+        colour = BRAND["colours"][i % len(BRAND["colours"])]
+        target_ax = ax2 if (i > 0 and ax2 is not None) else ax
+        target_ax.plot(
             df[x_col],
             df[metric],
             linewidth=2.5,
@@ -62,7 +65,7 @@ def render_line_chart(graph, client):
             label=metric,
             color=colour
         )
-        ax.fill_between(
+        target_ax.fill_between(
             df[x_col],
             df[metric],
             alpha=0.1,
@@ -72,11 +75,13 @@ def render_line_chart(graph, client):
     # ── 5. FORMATTING ────────────────────────────────────────────────
     ax.set_title(title, fontsize=14, fontweight="bold", pad=12, color=BRAND["quaternary"])
     ax.set_xlabel(x_col.capitalize(), fontsize=11)
-    ax.set_ylabel("Value", fontsize=11)
-    ax.grid(True, alpha=0.2)
-    ax.legend(facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
-    
-    # Format x-axis values
+
+    if ax2 is not None:
+        ax.set_ylabel(metrics[0], fontsize=11)
+        ax2.set_ylabel(metrics[1], fontsize=11)
+    else:
+        ax.set_ylabel(metrics[0], fontsize=11)
+
     if x_col == 'Date':
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
         fig.autofmt_xdate(rotation=45)
@@ -84,27 +89,21 @@ def render_line_chart(graph, client):
         ax.set_xticks(range(len(df[x_col])))
         ax.set_xticklabels(df[x_col], rotation=45, ha='right')
 
-    fig.autofmt_xdate(rotation=45)  # angle the labels so they don't overlap
-
-    # Light grid lines to make values easier to read
     ax.grid(True, alpha=0.3)
 
-    # Add a legend so we know which line is which metric
-    ax.legend()
+    lines1, labels1 = ax.get_legend_handles_labels()
+    if ax2 is not None:
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax.legend(lines1 + lines2, labels1 + labels2, facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
+    else:
+        ax.legend(lines1, labels1, facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
 
-    # Tight layout removes excess whitespace around the plot
     plt.tight_layout()
 
     # ── 6. SAVE AND RETURN ───────────────────────────────────────────
-    # Save as a PNG into the charts/ folder
-    # The filename is built from the title so each chart has a unique name
     path = f"charts/{title.replace(' ', '_')}.png"
     fig.savefig(path, bbox_inches="tight", dpi=150)
-
-    # Close the figure to free up memory
     plt.close(fig)
-
-    # Return the path so python-pptx knows where to find the image
     return path
 
 def render_bar_chart(graph, client):
