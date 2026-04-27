@@ -3,15 +3,163 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
+import secrets
 import subprocess
+import time
+
 from mcp.server.fastmcp import FastMCP
+from mcp.server.auth.provider import (
+    OAuthAuthorizationServerProvider,
+    AccessToken,
+    AuthorizationCode,
+    AuthorizationParams,
+    RefreshToken,
+    construct_redirect_uri,
+)
+from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions
+from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 with open(os.path.join(PROJECT_ROOT, "storage", "secrets.json"), "r") as f:
     _secrets = json.load(f)
 
-mcp = FastMCP("weekly-reports")
+ISSUER_URL = _secrets.get("mcp_server_url", "")
+if not ISSUER_URL:
+    raise RuntimeError("mcp_server_url missing from secrets.json — set it to your Cloudflare tunnel URL")
+
+
+class SimpleOAuthProvider(OAuthAuthorizationServerProvider):
+    """
+    Minimal in-memory OAuth provider for the weekly reports MCP server.
+    Auto-authorizes all requests — access control is handled by Claude enterprise
+    org membership, so anyone in the org who connects gets a token automatically.
+    Tokens are in-memory only; Claude enterprise will re-authorize on server restart.
+    """
+
+    def __init__(self):
+        self._clients: dict[str, OAuthClientInformationFull] = {}
+        self._auth_codes: dict[str, AuthorizationCode] = {}
+        self._access_tokens: dict[str, AccessToken] = {}
+        self._refresh_tokens: dict[str, RefreshToken] = {}
+
+    async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
+        return self._clients.get(client_id)
+
+    async def register_client(self, client_info: OAuthClientInformationFull) -> None:
+        self._clients[client_info.client_id] = client_info
+
+    async def authorize(self, client: OAuthClientInformationFull, params: AuthorizationParams) -> str:
+        code = secrets.token_urlsafe(32)
+        self._auth_codes[code] = AuthorizationCode(
+            code=code,
+            client_id=client.client_id,
+            scopes=params.scopes or [],
+            expires_at=time.time() + 300,
+            code_challenge=params.code_challenge,
+            redirect_uri=params.redirect_uri,
+            redirect_uri_provided_explicitly=params.redirect_uri_provided_explicitly,
+        )
+        return construct_redirect_uri(str(params.redirect_uri), code=code, state=params.state)
+
+    async def load_authorization_code(
+        self, client: OAuthClientInformationFull, authorization_code: str
+    ) -> AuthorizationCode | None:
+        code = self._auth_codes.get(authorization_code)
+        if code and code.client_id == client.client_id:
+            return code
+        return None
+
+    async def exchange_authorization_code(
+        self, client: OAuthClientInformationFull, authorization_code: AuthorizationCode
+    ) -> OAuthToken:
+        del self._auth_codes[authorization_code.code]
+        access_token_str = secrets.token_urlsafe(32)
+        refresh_token_str = secrets.token_urlsafe(32)
+        self._access_tokens[access_token_str] = AccessToken(
+            token=access_token_str,
+            client_id=client.client_id,
+            scopes=authorization_code.scopes,
+            expires_at=int(time.time()) + 86400,
+        )
+        self._refresh_tokens[refresh_token_str] = RefreshToken(
+            token=refresh_token_str,
+            client_id=client.client_id,
+            scopes=authorization_code.scopes,
+        )
+        return OAuthToken(
+            access_token=access_token_str,
+            token_type="bearer",
+            expires_in=86400,
+            refresh_token=refresh_token_str,
+            scope=" ".join(authorization_code.scopes),
+        )
+
+    async def load_access_token(self, token: str) -> AccessToken | None:
+        at = self._access_tokens.get(token)
+        if at and (at.expires_at is None or at.expires_at > time.time()):
+            return at
+        return None
+
+    async def load_refresh_token(
+        self, client: OAuthClientInformationFull, refresh_token: str
+    ) -> RefreshToken | None:
+        rt = self._refresh_tokens.get(refresh_token)
+        if rt and rt.client_id == client.client_id:
+            return rt
+        return None
+
+    async def exchange_refresh_token(
+        self,
+        client: OAuthClientInformationFull,
+        refresh_token: RefreshToken,
+        scopes: list[str],  # noqa: ignored — we preserve the existing token scopes
+    ) -> OAuthToken:
+        del self._refresh_tokens[refresh_token.token]
+        for token_str, at in list(self._access_tokens.items()):
+            if at.client_id == client.client_id:
+                del self._access_tokens[token_str]
+        access_token_str = secrets.token_urlsafe(32)
+        new_refresh_str = secrets.token_urlsafe(32)
+        self._access_tokens[access_token_str] = AccessToken(
+            token=access_token_str,
+            client_id=client.client_id,
+            scopes=refresh_token.scopes,
+            expires_at=int(time.time()) + 86400,
+        )
+        self._refresh_tokens[new_refresh_str] = RefreshToken(
+            token=new_refresh_str,
+            client_id=client.client_id,
+            scopes=refresh_token.scopes,
+        )
+        return OAuthToken(
+            access_token=access_token_str,
+            token_type="bearer",
+            expires_in=86400,
+            refresh_token=new_refresh_str,
+            scope=" ".join(refresh_token.scopes),
+        )
+
+    async def revoke_token(self, token: AccessToken | RefreshToken) -> None:
+        if isinstance(token, AccessToken):
+            self._access_tokens.pop(token.token, None)
+        else:
+            self._refresh_tokens.pop(token.token, None)
+
+
+mcp = FastMCP(
+    "weekly-reports",
+    auth_server_provider=SimpleOAuthProvider(),
+    auth=AuthSettings(
+        issuer_url=ISSUER_URL,
+        resource_server_url=ISSUER_URL,
+        client_registration_options=ClientRegistrationOptions(
+            enabled=True,
+            valid_scopes=["mcp"],
+            default_scopes=["mcp"],
+        ),
+    ),
+)
 
 
 @mcp.tool()
@@ -33,7 +181,6 @@ def fetch_client_data(client_name: str) -> str:
     )
     if result.returncode != 0:
         raise Exception(f"Data fetch failed: {result.stderr}")
-
     data_path = os.path.join(PROJECT_ROOT, "storage", f"{client_name}_data.json")
     with open(data_path, "r", encoding="utf-8") as f:
         return f.read()
@@ -45,7 +192,6 @@ def send_weekly_report(client_name: str, commentary: str) -> str:
     commentary_path = os.path.join(PROJECT_ROOT, "storage", f"{client_name}_commentary.json")
     with open(commentary_path, "w", encoding="utf-8") as f:
         json.dump(json.loads(commentary), f, ensure_ascii=False, indent=2)
-
     script = os.path.join(PROJECT_ROOT, "weekly_reports", "send_email.py")
     result = subprocess.run(
         [sys.executable, script, "--client", client_name],
@@ -53,32 +199,9 @@ def send_weekly_report(client_name: str, commentary: str) -> str:
     )
     if result.returncode != 0:
         raise Exception(f"Email send failed: {result.stderr}")
-
     return f"Weekly report sent successfully for {client_name}"
 
 
 if __name__ == "__main__":
     import uvicorn
-    from starlette.middleware.base import BaseHTTPMiddleware
-    from starlette.middleware import Middleware
-    from starlette.applications import Starlette
-    from starlette.routing import Mount
-    from starlette.responses import Response
-
-    SECRET = _secrets.get("mcp_secret_key", "")
-    if not SECRET:
-        raise RuntimeError("mcp_secret_key missing from secrets.json")
-
-    class AuthMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request, call_next):
-            auth = request.headers.get("Authorization", "")
-            print(f"[auth] path={request.url.path} header={repr(auth)}")
-            if auth != f"Bearer {SECRET}":
-                return Response("Unauthorized", status_code=401)
-            return await call_next(request)
-
-    app = Starlette(
-        routes=[Mount("/", app=mcp.sse_app())],
-        middleware=[Middleware(AuthMiddleware)]
-    )
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(mcp.sse_app(), host="0.0.0.0", port=8000)
