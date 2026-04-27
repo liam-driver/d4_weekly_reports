@@ -150,6 +150,7 @@ class SimpleOAuthProvider(OAuthAuthorizationServerProvider):
 mcp = FastMCP(
     "weekly-reports",
     auth_server_provider=SimpleOAuthProvider(),
+    streamable_http_path="/",
     auth=AuthSettings(
         issuer_url=ISSUER_URL,
         resource_server_url=ISSUER_URL,
@@ -204,4 +205,4 @@ def send_weekly_report(client_name: str, commentary: str) -> str:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(mcp.sse_app(), host="0.0.0.0", port=8000)
+    uvicorn.run(mcp.streamable_http_app(), host="0.0.0.0", port=8000)
