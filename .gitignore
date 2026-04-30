@@ -27,6 +27,7 @@
 !README.*
 
 # Override: always ignore these regardless of above rules
+.claude/settings.local.json
 secrets.json
 creds.json
 storage/
