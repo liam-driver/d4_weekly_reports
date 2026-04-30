@@ -16,7 +16,10 @@ from weekly_reports.generate_df import *
 # ── CHECKS ────────────────────────────────────────────────────────────────────
 
 def check_budget_pacing(client):
-    """Returns (status, detail). Status is 'pass', 'warn', or 'fail'."""
+    """Returns (status, detail). Status is 'pass', 'warn', 'fail', or 'skip'."""
+    budget_str = client.get('budget', '').strip()
+    if not budget_str or budget_str == '-':
+        return 'skip', 'No budget configured'
     date_range = {
         "start_date": client['start_date'],
         "end_date": client['end_date'],
@@ -25,13 +28,14 @@ def check_budget_pacing(client):
     df = initialise_df(client)
     df = apply_filters(df, client, ['Week number (ISO)', 'Ad Platform'], date_range)
     spend = pd.to_numeric(df.iloc[:,11], errors='coerce').sum()
-    budget = float(client['budget'].replace(',', ''))
+    budget = float(budget_str.replace(',', ''))
     run_rate = tat_get_run_rate(client, spend)
     pacing_pct = run_rate / budget
     detail = f"Spend to date £{spend:,.0f}. Tracking at £{run_rate:,.0f} vs £{budget:,.0f} expected ({pacing_pct:.0%} of pace)"
     if pacing_pct > 1.2 or pacing_pct < 0.7:
         return 'fail', detail
-    if pacing_pct > 1.1 or pacing_pct < 0.85:
+    upper_warn = 1.0 if client['name'] == 'Defib' else 1.1
+    if pacing_pct > upper_warn or pacing_pct < 0.85:
         return 'warn', detail
     return 'pass', detail
 
@@ -83,6 +87,12 @@ def check_campaign_spend(client):
     date_col = df.columns[1]
     cost_col = df.columns[2]
 
+    tracked_channels = {
+        'Paid Social Video', 'Paid Social Static', 'Paid Search',
+        'Display', 'Shopping', 'Combined', 'Performance Max', 'Video',
+    }
+    df = df[df[platform_col].isin(tracked_channels)]
+
     failing = []
     warning = []
 
@@ -119,7 +129,7 @@ def run_checks(client):
 
 # ── SLACK ─────────────────────────────────────────────────────────────────────
 
-STATUS_EMOJI = {"pass": "✅", "warn": "⚠️", "fail": "🔴"}
+STATUS_EMOJI = {"pass": "✅", "warn": "⚠️", "fail": "🔴", "skip": "➖"}
 
 
 def post_slack_message(token, channel, blocks, thread_ts=None):
@@ -196,7 +206,7 @@ def main():
         secrets = json.load(f)
 
     slack_token = secrets["slack_bot_token"]
-    slack_channel = "C093QSSCU1L"            #Official channel: C093QSSCU1L; Test: C05510P0Z7G
+    slack_channel = "C05510P0Z7G"            #Official channel: C093QSSCU1L; Test: C05510P0Z7G
 
     with open("storage/config.json") as f:
         clients = json.load(f)
