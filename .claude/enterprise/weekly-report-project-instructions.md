@@ -17,7 +17,8 @@ This returns the full client data JSON including `paid_data`, `llm_data`, `times
 Read `slack_channel_id` from the client data. If set, use the Slack MCP to:
 - Get the channel topic and purpose from channel info
 - Fetch the last 30 messages, filtering out bot messages and messages under 20 characters
-- Format as a readable summary: channel topic first, then messages with their dates
+- For any top-level message that has replies (`reply_count > 0`), fetch the thread replies using that message's `ts` as the `thread_ts`. Filter out bot replies and replies under 20 characters, then include them indented under the parent message
+- Format as a readable summary: channel topic first, then messages with their dates, with thread replies nested beneath their parent
 
 If `slack_channel_id` is empty, skip and note no Slack context is available.
 
@@ -30,7 +31,7 @@ Using all data from Step 1 and Slack context from Step 2:
 
 ### Step 4: Iterate on feedback
 
-Respond to user feedback by updating the relevant sections and re-rendering the full markdown preview. Repeat until the user explicitly approves and asks to send.
+Prompt user for feedback and respond to user feedback by updating the relevant sections and re-rendering the full markdown preview. Repeat until the user explicitly approves and asks to send.
 
 ### Step 5: Generate HTML and send
 
@@ -90,12 +91,7 @@ The client data JSON contains the following top-level sections. Always use both 
   - `MTD Yearly Comparison` — month to date vs same period last year
   - `MTD Monthly Comparison` — month to date vs same period last month
   - `WTD Weekly Comparison` — last 7 days vs the 7 days before that
-- `client_context`: Background on the client and their offering.
-- `holistic_plans`: Goals for the entire website this year.
-- `paid_plans`: Goals for the PPC channel this year.
-- `kpis`: Key performance indicators being tracked.
-- `seasonality`: External factors affecting performance.
-- `historical_context`: Performance overview from previous years.
+- **Project documents**: Background on the client, their goals, KPIs, seasonality, and historical context are provided as documents in this Claude project. Use these as the authoritative source for client context — they supersede any equivalent fields that may appear in the JSON data.
 - `slack_context`: Recent team commentary and channel topic from the client's Slack channel. Use to pick up on live context, blockers, or strategic notes the team has flagged.
 
 ### Metric Tier Hierarchy
@@ -115,7 +111,7 @@ Apply at all times when selecting evidence and framing points:
 - Explicitly reference the 90-day plan where a plan item plausibly links to a performance movement.
 - For acronyms (ROAS, CPA, etc.) style in all caps. Not all metric names — only acronyms.
 - Use British standard date format (dd/mm/yyyy).
-- It is essential that `holistic_plans`, `paid_plans`, `kpis`, `seasonality`, and `historical_context` are used — we compare ourselves to our own goals.
+- It is essential that the client context documents in this project are used — client goals, KPIs, seasonality, and historical context must inform the commentary. We compare performance against our own stated goals.
 - When looking at volume metrics, account for spend — if conversions are down, factor in cost.
 - Identify the data source for each reference (paid dataset or overall dataset, and which dimension if applicable).
 - If Slack context is available, reference it where relevant — particularly for flagged blockers, recent strategic decisions, or context that explains a performance movement.
@@ -124,7 +120,7 @@ Apply at all times when selecting evidence and framing points:
 
 **plan_overview**: For every task in `plans_90_day` marked 'current' (not 'old'): output the task name, description, and status as-is; convert start/end dates from ISO to dd/mm/yyyy; write a one-sentence client-friendly summary (no marketing fluff).
 
-**performance_overview**: 2–4 sentence paragraph comparing `mom.paid_data` and `mom.overall_data` against `holistic_plans` and `paid_plans`, with YoY context from `yoy.paid_data` where relevant. Focus on paid performance, framed within holistic goals. Only use data that aligns with the `kpis`. Include one sentence on spend: use `cost_to_date`, `run_rate`, and `monthly_budget`.
+**performance_overview**: 3–4 sentence paragraph comparing `mom.paid_data` and `mom.overall_data` against the holistic and paid goals in the project documents, with YoY context from `yoy.paid_data` where relevant. Focus on paid performance, framed within holistic goals. Only use data that aligns with the KPIs defined in the project documents. Include one sentence on spend: use `cost_to_date`, `run_rate`, and `monthly_budget`.
 
 **ninety_day_overview**: 2–4 sentence top-level trend summary from `timeseries`. No specifics — just trends. Focus on the primary KPI (e.g. Transaction Revenue or CPA) and what has driven the change. No metric soup.
 
@@ -132,7 +128,7 @@ Apply at all times when selecting evidence and framing points:
 - Use only these metric groups as the theme: Volume, Performance, Engagement, Efficiency
 - Apply metric tier hierarchy — lead with Tier 1/2 where available
 - Title format: `<Ad Channel> <Metric Group> <Clear Direction/Outcome>` (~8 words max)
-- Summary: 2–4 sentences explaining what changed and what it implies
+- Summary: 2–3 sentences explaining what changed and what it implies
 - Thresholds: only create a point if ≥10% change in a Tier 1/2 metric, or channel is ≥20% of total cost, or a clear multi-metric pattern exists
 - Low-spend channels (<10% of cost): require ≥20% Tier 1/2 change to mention
 - Do not anchor a point solely on Impressions or Clicks
