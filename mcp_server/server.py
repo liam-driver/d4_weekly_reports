@@ -354,23 +354,29 @@ def generate_monthly_pptx(client_name: str, slide_content: str) -> str:
 
 if __name__ == "__main__":
     import uvicorn
-    from starlette.applications import Starlette
-    from starlette.routing import Route, Mount
-    from starlette.responses import FileResponse, JSONResponse
-    from starlette.requests import Request
+    from starlette.responses import FileResponse, Response
 
-    async def download_file(request: Request):
-        filename = request.path_params["filename"]
-        slides_dir = os.path.join(PROJECT_ROOT, "slides")
-        file_path = os.path.join(slides_dir, filename)
-        if not os.path.abspath(file_path).startswith(os.path.abspath(slides_dir)):
-            return JSONResponse({"error": "Not found"}, status_code=404)
-        if not os.path.isfile(file_path) or not filename.endswith(".pptx"):
-            return JSONResponse({"error": "Not found"}, status_code=404)
-        return FileResponse(file_path, filename=filename, media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+    class FileDownloadMiddleware:
+        def __init__(self, app):
+            self.app = app
 
-    app = Starlette(routes=[
-        Route("/files/{filename}", download_file),
-        Mount("/", app=mcp.streamable_http_app()),
-    ])
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+        async def __call__(self, scope, receive, send):
+            if scope["type"] == "http" and scope.get("path", "").startswith("/files/"):
+                filename = scope["path"][len("/files/"):]
+                slides_dir = os.path.join(PROJECT_ROOT, "slides")
+                file_path = os.path.join(slides_dir, filename)
+                if (os.path.abspath(file_path).startswith(os.path.abspath(slides_dir))
+                        and os.path.isfile(file_path)
+                        and filename.endswith(".pptx")):
+                    response = FileResponse(
+                        file_path,
+                        filename=filename,
+                        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    )
+                else:
+                    response = Response(content='{"error":"Not found"}', status_code=404, media_type="application/json")
+                await response(scope, receive, send)
+                return
+            await self.app(scope, receive, send)
+
+    uvicorn.run(FileDownloadMiddleware(mcp.streamable_http_app()), host="0.0.0.0", port=8000)
