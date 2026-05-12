@@ -13,6 +13,7 @@
 !.claude/
 !templates/
 !fonts/
+!slides/
 
 # Allow contents
 !core/**
@@ -23,6 +24,7 @@
 !.claude/**
 !templates/**
 !fonts/**
+!slides/template.pptx
 
 # Root-level files to keep
 !requirements.txt
