@@ -304,6 +304,38 @@ def send_weekly_report_html(client_name: str, html_body: str) -> str:
 
 
 @mcp.tool()
+def get_available_dimensions(client_name: str) -> str:
+    """Return the dimension options available for a client's raw data export.
+    Reads the client's Google Sheet headers and cross-references against the
+    dimension allowlist in storage/dimension_config.json.
+    Returns a JSON array of {column_name, label, requires_channel_filter} objects."""
+    _validate_client_name(client_name)
+    config_path = os.path.join(PROJECT_ROOT, "storage", "config.json")
+    with open(config_path, "r", encoding="utf-8") as f:
+        clients = json.load(f)
+    client = next(c for c in clients if c["name"] == client_name)
+    from monthly_reports.dimension_cuts import get_available_dimensions as _get_dims
+    dimensions = _get_dims(client)
+    return json.dumps(dimensions, ensure_ascii=False)
+
+
+@mcp.tool()
+def fetch_dimension_cut(client_name: str, dimension: str, channel_filter: str = "") -> str:
+    """Fetch MoM comparison data for a dimension cut and append it to the cached monthly JSON.
+    dimension: the column_name from dimension_config.json (e.g. 'Campaign').
+    channel_filter: optional JSON string with shape {"type": "include"|"exclude", "channels": [...]}.
+                    Pass an empty string for no filter.
+    Returns a JSON object with the fetched data_mom and generated commentary."""
+    _validate_client_name(client_name)
+    parsed_filter = None
+    if channel_filter and channel_filter.strip():
+        parsed_filter = json.loads(channel_filter)
+    from monthly_reports.dimension_cuts import fetch_and_append_dimension_cut
+    cut_entry = fetch_and_append_dimension_cut(client_name, dimension, parsed_filter)
+    return json.dumps(cut_entry, ensure_ascii=False)
+
+
+@mcp.tool()
 def generate_monthly_pptx(client_name: str, slide_content: str) -> str:
     """Generate the monthly PPTX for a client from pre-generated slide content.
     slide_content must be a JSON string with keys: overview (summary, bullets),

@@ -27,3 +27,4 @@ slack_sdk==3.27.1
 tzdata==2023.3
 urllib3==1.26.16
 openai
+pytest

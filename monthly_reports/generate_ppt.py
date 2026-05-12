@@ -563,6 +563,40 @@ def generate_ppt(client_name, output_path=None, slide_content=None):
                 bullets= [action['summary']],
             )
 
+    dimension_cuts = client.get('dimension_cuts', [])
+    for cut in dimension_cuts:
+        commentary = cut.get('commentary', {})
+        label = cut.get('label', cut.get('dimension', 'Dimension'))
+        channel_filter = cut.get('channel_filter')
+
+        section_title = f"By {label}"
+        if channel_filter and channel_filter.get('channels'):
+            filter_type = channel_filter.get('type', 'include')
+            channels_str = ', '.join(channel_filter['channels'])
+            section_title += (
+                f" ({channels_str} only)"
+                if filter_type == 'include'
+                else f" (excl. {channels_str})"
+            )
+        slide_section_separator(prs, section_title, variant='orange')
+
+        overview_text = commentary.get('overview', '')
+        if overview_text:
+            slide_commentary(
+                prs,
+                title=f"{label} — Month on Month",
+                summary=overview_text,
+                bullets=[],
+            )
+
+        for insight in commentary.get('insights', []):
+            slide_commentary(
+                prs,
+                title=insight.get('title', label),
+                summary=insight.get('summary', ''),
+                bullets=insight.get('bullets', []),
+            )
+
     plan_json = client.get('plan_json')
     if plan_json:
         tasks = _extract_current_tasks(plan_json)

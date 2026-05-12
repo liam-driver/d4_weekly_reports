@@ -232,6 +232,141 @@ def generate_weekly_commentary(client):
     return json.loads(response.output_text)
 
 
+def generate_dimension_cut_commentary(data_mom, label, channel_filter, client):
+    """
+    Generates insight commentary for a single dimension cut.
+
+    data_mom: dict — same shape as paid_data_mom, keyed by dimension value.
+    label: human-readable dimension name (e.g. 'Campaign').
+    channel_filter: dict {"type": "include"|"exclude", "channels": [...]} or None.
+    client: full client dict (for account_type, kpis, start/end date strings, etc.)
+
+    Returns:
+        {
+            "overview": "string paragraph",
+            "insights": [
+                {"title": "string", "summary": "string", "bullets": [{"point": "string"}]}
+            ]
+        }
+    """
+    channel_filter_desc = "No channel filter applied."
+    if channel_filter:
+        filter_type = channel_filter.get('type', 'include')
+        channels = channel_filter.get('channels', [])
+        if channels:
+            channel_filter_desc = (
+                f"Data filtered to include only: {', '.join(channels)}."
+                if filter_type == 'include'
+                else f"Data excludes: {', '.join(channels)}."
+            )
+
+    payload = {
+        "inputs": {
+            "dimension_label": label,
+            "channel_filter":  channel_filter_desc,
+            "data_mom":        data_mom,
+            "report_start_date": client.get('start_date_string', ''),
+            "report_end_date":   client.get('end_date_string', ''),
+            "client_context":    client.get('client_context', ''),
+            "kpis":              client.get('kpis', ''),
+            "account_type":      client.get('account_type', 'Ecommerce'),
+        }
+    }
+
+    schema = {
+        "name": "dimension_cut_commentary",
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "overview": {"type": "string"},
+                "insights": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 5,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "title":   {"type": "string"},
+                            "summary": {"type": "string"},
+                            "bullets": {
+                                "type": "array",
+                                "minItems": 2,
+                                "maxItems": 5,
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "properties": {"point": {"type": "string"}},
+                                    "required": ["point"]
+                                }
+                            }
+                        },
+                        "required": ["title", "summary", "bullets"]
+                    }
+                }
+            },
+            "required": ["overview", "insights"]
+        },
+        "strict": True
+    }
+
+    response = oai.responses.create(
+        model="gpt-4o-mini",
+        instructions=(
+            "You are a senior performance marketing manager writing month-on-month insight "
+            "commentary for a specific data dimension cut (e.g. by Campaign or by Asset). "
+            "Write in British English. Be direct and evidence-led. "
+            "The comparison is the current month vs. the previous month only. "
+            "Use 'previous month' rather than specific dates.\n\n"
+
+            "METRIC TIER HIERARCHY:\n"
+            "- Tier 1 (Outcome): ROAS (Ecommerce), CPA (Lead Gen), Transaction Revenue, "
+            "Conversions. Lead all points with these where available.\n"
+            "- Tier 2 (Efficiency): Conversion Rate, AOV, CPC, CTR.\n"
+            "- Tier 3 (Volume): Cost, Clicks, Transactions.\n"
+            "- Only reference lower tiers to contextualise Tier 1/2 movements.\n\n"
+
+            "STYLE:\n"
+            "- overview: 2-3 sentences giving a top-level summary of the dimension's "
+            "month-on-month performance, naming the strongest and weakest performers.\n"
+            "- insights: 1-5 entries. Each insight covers a notable pattern or standout "
+            "performer within the dimension (e.g. a specific campaign, asset, or group). "
+            "title: short label (max 8 words). summary: one sentence. "
+            "bullets: 2-5 evidence-backed supporting points with specific numbers from data_mom.\n"
+            "- Acronyms (ROAS, CPA, CTR, AOV, CPC) in all caps.\n"
+            "- Do not create an insight for every single dimension value — focus on the "
+            "most significant movements.\n"
+        ),
+        input=[
+            {
+                "role": "user",
+                "content": (
+                    "Return JSON exactly matching the schema.\n\n"
+                    "dimension_label: the dimension being analysed (e.g. Campaign).\n"
+                    "channel_filter: any Ad Channel scoping applied to the data.\n"
+                    "data_mom: month-on-month comparison data keyed by dimension value, "
+                    "each with curr/prev/delta/pct sub-keys per metric.\n"
+                    "account_type: Ecommerce or Lead Gen — use the appropriate primary KPI "
+                    "(ROAS for Ecommerce, CPA for Lead Gen).\n\n"
+                    "Input JSON:\n"
+                    + json.dumps(payload, ensure_ascii=False)
+                )
+            }
+        ],
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": schema["name"],
+                "schema": schema["schema"],
+                "strict": schema["strict"],
+            }
+        },
+    )
+
+    return json.loads(response.output_text)
+
+
 def generate_monthly_slide_content(client):
     payload = {
         "inputs": {

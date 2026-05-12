@@ -75,6 +75,10 @@ def run_monthly_report(client_name, data_only=False):
         client['llm_data_mom'] = get_funnel_data(client, llm_type)
         client['overall_data_mom'] = get_funnel_data(client, overall_type)
 
+        # Store MoM dates explicitly so dimension cut fetches can reuse them
+        client['compare_start_mom'] = compare_start_mom
+        client['compare_end_mom']   = compare_end_mom
+
         # YoY comparison pass
         client['compare_start_date'] = compare_start_yoy
         client['compare_end_date'] = compare_end_yoy
@@ -88,6 +92,9 @@ def run_monthly_report(client_name, data_only=False):
         # Alias MoM as the primary paid_data so existing helpers (add_kpi_boxes, get_run_rate) work
         client['paid_data'] = client['paid_data_mom']
         client['run_rate'] = get_run_rate(client)
+
+        # Initialise empty dimension cuts — populated later via fetch_dimension_cut MCP tool
+        client['dimension_cuts'] = []
 
     except Exception as e:
         log_error(f"{client['name']} monthly_reports/main: data fetch failed: {e}")
