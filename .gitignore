@@ -15,6 +15,7 @@
 !fonts/
 !slides/
 !tests/
+!storage/
 
 # Allow contents
 !core/**
@@ -36,7 +37,8 @@
 .claude/settings.local.json
 secrets.json
 creds.json
-storage/
+storage/*
+!storage/dimension_config.json
 venv/
 .venv/
 __pycache__/
