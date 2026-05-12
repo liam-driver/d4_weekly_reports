@@ -66,7 +66,7 @@ Once the user approves:
 2. Call the `generate_monthly_pptx` MCP tool with:
    - `client_name` = the client name the user provided
    - `slide_content` = the generated JSON string
-3. Surface the returned file path to the user
+3. Surface the `download_url` from the returned JSON to the user as a clickable download link
 
 The PPTX is generated from the cached `{client_name}_monthly_data.json`. Any dimension cuts fetched during the session are already persisted in that file and will be rendered automatically as additional sections after the Actions section — you do not need to include them in `slide_content`.
 
