@@ -12,6 +12,7 @@
 !mcp_server/
 !.claude/
 !templates/
+!fonts/
 
 # Allow contents
 !core/**
@@ -21,6 +22,7 @@
 !mcp_server/**
 !.claude/**
 !templates/**
+!fonts/**
 
 # Root-level files to keep
 !requirements.txt
