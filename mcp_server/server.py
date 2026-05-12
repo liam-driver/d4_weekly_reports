@@ -303,6 +303,19 @@ def send_weekly_report_html(client_name: str, html_body: str) -> str:
     return f"Weekly report sent successfully for {client_name}"
 
 
+@mcp.tool()
+def generate_monthly_pptx(client_name: str, slide_content: str) -> str:
+    """Generate the monthly PPTX for a client from pre-generated slide content.
+    slide_content must be a JSON string with keys: overview (summary, bullets),
+    trends (list of title/summary/bullets/graph objects), and actions (list of
+    task/summary/status/graph objects). Returns the absolute path to the saved PPTX."""
+    _validate_client_name(client_name)
+    from monthly_reports.generate_ppt import generate_ppt
+    content = json.loads(slide_content)
+    output_path = generate_ppt(client_name, slide_content=content)
+    return output_path
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(mcp.streamable_http_app(), host="0.0.0.0", port=8000)

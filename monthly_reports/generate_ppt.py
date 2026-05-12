@@ -2,6 +2,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 import argparse
 import shutil
 import json
@@ -484,8 +486,8 @@ def slide_planning_gantt(prs, title, tasks):
 
 # ── PIPELINE ORCHESTRATOR ─────────────────────────────────────────────────────
 
-def generate_ppt(client_name, output_path=None):
-    data_path = f"storage/{client_name}_monthly_data.json"
+def generate_ppt(client_name, output_path=None, slide_content=None):
+    data_path = os.path.join(PROJECT_ROOT, "storage", f"{client_name}_monthly_data.json")
     if not os.path.exists(data_path):
         raise FileNotFoundError(
             f"No monthly data file found for '{client_name}'. "
@@ -494,15 +496,19 @@ def generate_ppt(client_name, output_path=None):
     with open(data_path, "r", encoding="utf-8") as f:
         client = json.load(f)
 
-    client['slide_content'] = generate_monthly_slide_content(client)
-    with open(f"storage/{client_name}_monthly_content.json", "w", encoding="utf-8") as f:
+    if slide_content is None:
+        slide_content = generate_monthly_slide_content(client)
+    client['slide_content'] = slide_content
+    content_path = os.path.join(PROJECT_ROOT, "storage", f"{client_name}_monthly_content.json")
+    with open(content_path, "w", encoding="utf-8") as f:
         json.dump(client['slide_content'], f, ensure_ascii=False, indent=2)
 
     current_month = datetime.strptime(client['start_date_string'], "%d/%m/%Y").strftime("%B")
 
     if output_path is None:
-        output_path = f"slides/{client_name}_monthly.pptx"
-    shutil.copy('slides/template.pptx', output_path)
+        output_path = os.path.join(PROJECT_ROOT, "slides", f"{client_name}_monthly.pptx")
+    template_path = os.path.join(PROJECT_ROOT, "slides", "template.pptx")
+    shutil.copy(template_path, output_path)
     prs = Presentation(output_path)
 
     slide_rid = prs.slides._sldIdLst[0].get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
@@ -566,6 +572,7 @@ def generate_ppt(client_name, output_path=None):
 
     prs.save(output_path)
     print(f"Saved {output_path} with {len(prs.slides)} slide(s)")
+    return output_path
 
 
 if __name__ == "__main__":
