@@ -15,7 +15,7 @@ from weekly_reports.generate_df import *
 
 # ── CHECKS ────────────────────────────────────────────────────────────────────
 
-def check_budget_pacing(client):
+def check_budget_pacing(client, df):
     """Returns (status, detail). Status is 'pass', 'warn', 'fail', or 'skip'."""
     budget_str = client.get('budget', '').strip()
     if not budget_str or budget_str == '-':
@@ -25,8 +25,7 @@ def check_budget_pacing(client):
         "end_date": client['end_date'],
     }
 
-    df = initialise_df(client)
-    df = apply_filters(df, client, ['Week number (ISO)', 'Ad Platform'], date_range)
+    df = apply_filters(df.copy(), client, ['Week number (ISO)', 'Ad Platform'], date_range)
     spend = pd.to_numeric(df.iloc[:,11], errors='coerce').sum()
     budget = float(budget_str.replace(',', ''))
     run_rate = tat_get_run_rate(client, spend)
@@ -40,13 +39,12 @@ def check_budget_pacing(client):
     return 'pass', detail
 
 
-def check_conversion_tracking(client):
+def check_conversion_tracking(client, df):
     date_range = {
         "start_date": client['end_date'] - timedelta(days=7),
         "end_date": client['end_date'],
     }
-    df = initialise_df(client)
-    df = apply_filters(df, client, ['Date', 'Channel'], date_range)
+    df = apply_filters(df.copy(), client, ['Date', 'Channel'], date_range)
 
     daily = (
         df.groupby('Date')
@@ -70,14 +68,13 @@ def check_conversion_tracking(client):
     return 'pass', f"{total:,} conversions recorded in last 7 days — no issues detected"
 
 
-def check_campaign_spend(client):
+def check_campaign_spend(client, df):
     """Returns (status, detail)."""
     date_range = {
             "start_date": client['end_date'] - timedelta(days=3),
             "end_date": client['end_date'],
         }
-    df = initialise_df(client)
-    df = apply_filters(df, client, ['Ad Platform', 'Date'], date_range)
+    df = apply_filters(df.copy(), client, ['Ad Platform', 'Date'], date_range)
     if client['account_type'] == 'Ecommerce':
         df = paid_ecommerce(df, ['Date', 'Ad Platform'], '')
     else:
@@ -120,16 +117,48 @@ def check_campaign_spend(client):
 
 
 def run_checks(client):
+    df = initialise_df(client)
     return [
-        {"name": "Budget Pacing",        "result": check_budget_pacing(client)},
-        {"name": "Conversion Tracking",  "result": check_conversion_tracking(client)},
-        {"name": "Campaign Spend",        "result": check_campaign_spend(client)},
+        {"name": "Budget Pacing",        "result": check_budget_pacing(client, df)},
+        {"name": "Conversion Tracking",  "result": check_conversion_tracking(client, df)},
+        {"name": "Campaign Spend",        "result": check_campaign_spend(client, df)},
     ]
 
 
 # ── SLACK ─────────────────────────────────────────────────────────────────────
 
 STATUS_EMOJI = {"pass": "✅", "warn": "⚠️", "fail": "🔴", "skip": "➖"}
+
+LAST_RUN_PATH = "storage/last_run.json"
+
+
+def load_last_run():
+    try:
+        with open(LAST_RUN_PATH) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_last_run(data):
+    with open(LAST_RUN_PATH, "w") as f:
+        json.dump(data, f)
+
+
+def delete_slack_message(token, channel, ts):
+    resp = requests.post(
+        "https://slack.com/api/chat.delete",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"channel": channel, "ts": ts},
+    )
+    data = resp.json()
+    if not data.get("ok"):
+        log_error(f"Slack delete error: {data.get('error')} (channel={channel}, ts={ts})")
+
+
+def delete_previous_run(token, last_run):
+    for msg in last_run.get("client_messages", {}).values():
+        delete_slack_message(token, msg["channel_id"], msg["ts"])
 
 
 def post_slack_message(token, channel, blocks, thread_ts=None):
@@ -213,7 +242,10 @@ def main():
 
     date_str = datetime.today().strftime("%a %d %b")
 
-    client_results = [] 
+    last_run = load_last_run()
+    delete_previous_run(slack_token, last_run)
+
+    client_results = []
     client_channels = {}
     for client in clients:
         client = config_dates(client)
@@ -226,18 +258,20 @@ def main():
             log_error(f"Checks failed for {client['name']}: {e}")
 
     summary_blocks = build_summary_blocks(client_results, date_str)
-    thread_ts = post_slack_message(slack_token, slack_channel, summary_blocks)
+    summary_ts = post_slack_message(slack_token, slack_channel, summary_blocks)
 
     thread_blocks = build_thread_blocks(client_results)
-    post_slack_message(slack_token, slack_channel, thread_blocks, thread_ts=thread_ts)
+    thread_ts = post_slack_message(slack_token, slack_channel, thread_blocks, thread_ts=summary_ts)
 
+    client_messages = {}
     for client_name, checks in client_results:
-        statuses = [c["result"][0] for c in checks]
-        if "fail" not in statuses:
-            continue
         channel_id = client_channels.get(client_name, '')
         if not channel_id:
             continue
-        post_slack_message(slack_token, channel_id, [build_client_block(client_name, checks)])
+        ts = post_slack_message(slack_token, channel_id, [build_client_block(client_name, checks)])
+        if ts:
+            client_messages[client_name] = {"channel_id": channel_id, "ts": ts}
+
+    save_last_run({"client_messages": client_messages})
 
 main()

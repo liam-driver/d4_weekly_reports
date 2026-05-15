@@ -1,7 +1,8 @@
 from datetime import datetime
-import json
+import os
 
 def log_error(message):
     ts = datetime.now()
-    with open("errors/error.txt","a", encoding="utf-8")as f:
+    os.makedirs("errors", exist_ok=True)
+    with open("errors/error.txt", "a", encoding="utf-8") as f:
         f.write(f"{ts} | {message}\n")
