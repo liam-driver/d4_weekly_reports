@@ -199,11 +199,10 @@ def pivot_df(df_grouped, breakdown_dimension, metrics, table_type):
         df_pivot = df_pivot.reset_index()
         
         for metric in metrics:
-            df_pivot[f"{metric}__delta"] = df_pivot[f"{metric}__current"] - df_pivot[f"{metric}__previous"] 
-            df_pivot[f"{metric}__pct"] = np.where(
-                df_pivot[f"{metric}__previous"].fillna(0).eq(0),
-                np.nan,
-                df_pivot[f"{metric}__delta"] / df_pivot[f"{metric}__previous"]
+            df_pivot[f"{metric}__delta"] = df_pivot[f"{metric}__current"] - df_pivot[f"{metric}__previous"]
+            df_pivot[f"{metric}__pct"] = (
+                df_pivot[f"{metric}__delta"]
+                / df_pivot[f"{metric}__previous"].replace(0, np.nan)
             )
 
     else:

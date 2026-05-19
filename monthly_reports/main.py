@@ -75,9 +75,11 @@ def run_monthly_report(client_name, data_only=False):
         client['llm_data_mom'] = get_funnel_data(client, llm_type)
         client['overall_data_mom'] = get_funnel_data(client, overall_type)
 
-        # Store MoM dates explicitly so dimension cut fetches can reuse them
+        # Store comparison dates explicitly so dimension cut fetches can reuse them
         client['compare_start_mom'] = compare_start_mom
         client['compare_end_mom']   = compare_end_mom
+        client['compare_start_yoy'] = compare_start_yoy
+        client['compare_end_yoy']   = compare_end_yoy
 
         # YoY comparison pass
         client['compare_start_date'] = compare_start_yoy
