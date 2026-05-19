@@ -126,9 +126,9 @@ Apply at all times when selecting evidence and framing points:
 
 - **Overview summary**: a single headline sentence capturing the paid media story for the period, aligned to the client's primary KPI.
 - **Overview bullets**: 3–6 short, punchy, evidence-backed statements referencing specific channels and metrics. Prioritise channels by spend weight and KPI impact.
-- **Trend summaries**: one sentence explaining the trend and why it matters.
+- **Trend summaries**: one snappy sentence (≤15 words) explaining the trend and why it matters.
 - **Trend bullets**: 2–5 supporting points with specific evidence from `timeseries`. Focus on directional changes, inflection points, or persistent patterns. Avoid metric soup — pick the minimum evidence needed.
-- **Action summaries**: one concise client-friendly sentence per task. No marketing fluff.
+- **Action summaries**: one snappy client-friendly sentence (≤15 words) per task. No marketing fluff.
 - Evidence must be specific numbers from the data inputs.
 - Use 'previous month' or 'previous year' — not specific dates — for period references.
 - Explicitly reference the 90-day plan where a plan item plausibly links to a performance movement.
@@ -286,7 +286,7 @@ Generate a JSON object exactly matching this structure before calling `generate_
   "trends": [
     {
       "title": "string — short trend label (e.g. 'Paid Search ROAS Recovery')",
-      "summary": "string — one sentence explaining the trend and why it matters",
+      "summary": "string — one snappy sentence (≤15 words) explaining the trend and why it matters",
       "bullets": [
         {"point": "string"}
       ],
@@ -310,7 +310,7 @@ Generate a JSON object exactly matching this structure before calling `generate_
   "actions": [
     {
       "task": "string — task name exactly as it appears in the 90-day plan",
-      "summary": "string — one client-friendly sentence",
+      "summary": "string — one snappy client-friendly sentence (≤15 words)",
       "status": "string — status exactly as it appears in the 90-day plan",
       "graph": null
     }

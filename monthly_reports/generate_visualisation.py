@@ -3,7 +3,16 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.font_manager as fm
+import matplotlib.ticker as mticker
 import os
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+PCT_METRICS = {
+    "ROAS", "CTR", "Conversion Rate", "Impression Share",
+    "Abs. Top Impression Share", "View Rate", "Hook Rate", "Hold Rate",
+}
+_PCT_FMT = mticker.FuncFormatter(lambda x, _: f"{x:.2f}%")
 
 
 # ── BRAND CONFIG ─────────────────────────────────────────────────────
@@ -75,9 +84,9 @@ def render_line_chart(graph, client):
     df = build_monthly_df(client)
     df = _apply_monthly_filters(df, filters)
 
-    if x_col not in df.columns:
-        x_col = 'Week number (ISO)'
     metrics = [m for m in metrics if m in df.columns]
+    if x_col not in df.columns or x_col in metrics:
+        x_col = 'Week number (ISO)'
     for metric in metrics:
         df[metric] = pd.to_numeric(df[metric], errors='coerce')
     df = df.groupby(x_col, as_index=False)[metrics].sum()
@@ -123,6 +132,11 @@ def render_line_chart(graph, client):
     else:
         ax.set_ylabel(metrics[0], fontsize=11, color=BRAND["quaternary"])
 
+    if metrics and metrics[0] in PCT_METRICS:
+        ax.yaxis.set_major_formatter(_PCT_FMT)
+    if ax2 and len(metrics) > 1 and metrics[1] in PCT_METRICS:
+        ax2.yaxis.set_major_formatter(_PCT_FMT)
+
     if x_col == 'Date':
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
         fig.autofmt_xdate(rotation=45)
@@ -142,7 +156,9 @@ def render_line_chart(graph, client):
     plt.tight_layout()
 
     # ── 6. SAVE AND RETURN ───────────────────────────────────────────
-    path = f"charts/{title.replace(' ', '_')}.png"
+    charts_dir = os.path.join(PROJECT_ROOT, "charts")
+    os.makedirs(charts_dir, exist_ok=True)
+    path = os.path.join(charts_dir, f"{title.replace(' ', '_')}.png")
     fig.savefig(path, bbox_inches="tight", dpi=150)
     plt.close(fig)
     return path
@@ -160,9 +176,9 @@ def render_bar_chart(graph, client):
     df = build_monthly_df(client)
     df = _apply_monthly_filters(df, filters)
 
-    if x_col not in df.columns:
-        x_col = 'Week number (ISO)'
     metrics = [m for m in metrics if m in df.columns]
+    if x_col not in df.columns or x_col in metrics:
+        x_col = 'Week number (ISO)'
     for metric in metrics:
         df[metric] = pd.to_numeric(df[metric], errors='coerce')
     df = df.groupby(x_col, as_index=False)[metrics].sum()
@@ -198,12 +214,16 @@ def render_bar_chart(graph, client):
         rotation=45,
         ha="right"
     )
-    ax.grid(True, alpha=0.2, axis="y")  # horizontal grid lines only
+    if metrics and all(m in PCT_METRICS for m in metrics):
+        ax.yaxis.set_major_formatter(_PCT_FMT)
+    ax.grid(True, alpha=0.2, axis="y")
     ax.legend(facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
     plt.tight_layout()
 
     # ── 6. SAVE AND RETURN ───────────────────────────────────────────
-    path = f"charts/{title.replace(' ', '_')}.png"
+    charts_dir = os.path.join(PROJECT_ROOT, "charts")
+    os.makedirs(charts_dir, exist_ok=True)
+    path = os.path.join(charts_dir, f"{title.replace(' ', '_')}.png")
     fig.savefig(path, bbox_inches="tight", dpi=150)
     plt.close(fig)
     return path
@@ -222,9 +242,9 @@ def render_stacked_bar_chart(graph, client):
     df = build_monthly_df(client)
     df = _apply_monthly_filters(df, filters)
 
-    if x_col not in df.columns:
-        x_col = 'Week number (ISO)'
     metrics_present = [m for m in metrics if m in df.columns]
+    if x_col not in df.columns or x_col in metrics_present:
+        x_col = 'Week number (ISO)'
     for m in metrics_present:
         df[m] = pd.to_numeric(df[m], errors='coerce')
     df = df.groupby(x_col, as_index=False)[metrics_present].sum()
@@ -263,12 +283,16 @@ def render_stacked_bar_chart(graph, client):
         rotation=45,
         ha="right"
     )
+    if metrics and all(m in PCT_METRICS for m in metrics):
+        ax.yaxis.set_major_formatter(_PCT_FMT)
     ax.grid(True, alpha=0.2, axis="y")
     ax.legend(facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
     plt.tight_layout()
 
     # ── 6. SAVE AND RETURN ───────────────────────────────────────────
-    path = f"charts/{title.replace(' ', '_')}.png"
+    charts_dir = os.path.join(PROJECT_ROOT, "charts")
+    os.makedirs(charts_dir, exist_ok=True)
+    path = os.path.join(charts_dir, f"{title.replace(' ', '_')}.png")
     fig.savefig(path, bbox_inches="tight", dpi=150)
     plt.close(fig)
     return path
@@ -287,9 +311,9 @@ def render_pie_chart(graph, client):
     df = build_monthly_df(client)
     df = _apply_monthly_filters(df, filters)
 
-    if x_col not in df.columns:
-        x_col = 'Week number (ISO)'
     metrics_present = [m for m in metrics if m in df.columns]
+    if x_col not in df.columns or x_col in metrics_present:
+        x_col = 'Week number (ISO)'
     for m in metrics_present:
         df[m] = pd.to_numeric(df[m], errors='coerce')
     df = df.groupby(x_col, as_index=False)[metrics_present].sum()
@@ -324,7 +348,9 @@ def render_pie_chart(graph, client):
     plt.tight_layout()
 
     # ── 6. SAVE AND RETURN ───────────────────────────────────────────
-    path = f"charts/{title.replace(' ', '_')}.png"
+    charts_dir = os.path.join(PROJECT_ROOT, "charts")
+    os.makedirs(charts_dir, exist_ok=True)
+    path = os.path.join(charts_dir, f"{title.replace(' ', '_')}.png")
     fig.savefig(path, bbox_inches="tight", dpi=150)
     plt.close(fig)
     return path
@@ -342,9 +368,9 @@ def render_line_bar_combo_chart(graph, client):
     df = build_monthly_df(client)
     df = _apply_monthly_filters(df, filters)
 
-    if x_col not in df.columns:
-        x_col = 'Week number (ISO)'
     metrics_present = [m for m in metrics if m in df.columns]
+    if x_col not in df.columns or x_col in metrics_present:
+        x_col = 'Week number (ISO)'
     for m in metrics_present:
         df[m] = pd.to_numeric(df[m], errors='coerce')
     df = df.groupby(x_col, as_index=False)[metrics_present].sum()
@@ -390,6 +416,11 @@ def render_line_bar_combo_chart(graph, client):
     ax1.set_ylabel(bar_metric, fontsize=11, color=BRAND["quaternary"])
     ax2.set_ylabel(line_metric, fontsize=11, color=BRAND["quaternary"])
 
+    if bar_metric in PCT_METRICS:
+        ax1.yaxis.set_major_formatter(_PCT_FMT)
+    if line_metric in PCT_METRICS:
+        ax2.yaxis.set_major_formatter(_PCT_FMT)
+
     ax1.set_xticks(list(x))
     ax1.set_xticklabels(
         [d.strftime("%b %d") if hasattr(d, 'strftime') else str(d) for d in df[x_col]],
@@ -399,7 +430,6 @@ def render_line_bar_combo_chart(graph, client):
 
     ax1.grid(True, alpha=0.2, axis="y")
 
-    # Combine legends from both axes into one
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
@@ -409,7 +439,9 @@ def render_line_bar_combo_chart(graph, client):
     plt.tight_layout()
 
     # ── 6. SAVE AND RETURN ───────────────────────────────────────────
-    path = f"charts/{title.replace(' ', '_')}.png"
+    charts_dir = os.path.join(PROJECT_ROOT, "charts")
+    os.makedirs(charts_dir, exist_ok=True)
+    path = os.path.join(charts_dir, f"{title.replace(' ', '_')}.png")
     fig.savefig(path, bbox_inches="tight", dpi=150)
     plt.close(fig)
     return path
@@ -428,14 +460,14 @@ def render_horizontal_bar_chart(graph, client):
     df = build_monthly_df(client)
     df = _apply_monthly_filters(df, filters)
 
-    if x_col not in df.columns:
-        x_col = 'Week number (ISO)'
     metrics = [m for m in metrics if m in df.columns]
+    if x_col not in df.columns or x_col in metrics:
+        x_col = 'Week number (ISO)'
     for m in metrics:
         df[m] = pd.to_numeric(df[m], errors='coerce')
     df = df.groupby(x_col, as_index=False)[metrics].sum()
 
-    # Sort descending so largest bar is at the top
+    # Sort so largest bar is at the top
     df = df.sort_values(by=metrics[0], ascending=True)
 
     # ── 3. CREATE THE FIGURE ─────────────────────────────────────────
@@ -463,12 +495,16 @@ def render_horizontal_bar_chart(graph, client):
     ax.set_xlabel("Value", fontsize=11)
     ax.set_yticks(list(y))
     ax.set_yticklabels(df[x_col])
-    ax.grid(True, alpha=0.2, axis="x")  # vertical grid lines only for horizontal bars
+    if metrics and metrics[0] in PCT_METRICS:
+        ax.xaxis.set_major_formatter(_PCT_FMT)
+    ax.grid(True, alpha=0.2, axis="x")
     ax.legend(facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
     plt.tight_layout()
 
     # ── 6. SAVE AND RETURN ───────────────────────────────────────────
-    path = f"charts/{title.replace(' ', '_')}.png"
+    charts_dir = os.path.join(PROJECT_ROOT, "charts")
+    os.makedirs(charts_dir, exist_ok=True)
+    path = os.path.join(charts_dir, f"{title.replace(' ', '_')}.png")
     fig.savefig(path, bbox_inches="tight", dpi=150)
     plt.close(fig)
     return path
@@ -522,19 +558,24 @@ def render_scatter_chart(graph, client):
     ax.set_title(title, fontsize=14, fontweight="bold", pad=12, color=BRAND["quaternary"])
     ax.set_xlabel(x_metric, fontsize=11)
     ax.set_ylabel(y_metric, fontsize=11)
+    if x_metric in PCT_METRICS:
+        ax.xaxis.set_major_formatter(_PCT_FMT)
+    if y_metric in PCT_METRICS:
+        ax.yaxis.set_major_formatter(_PCT_FMT)
     ax.grid(True, alpha=0.2)
     plt.tight_layout()
 
     # ── 6. SAVE AND RETURN ───────────────────────────────────────────
-    path = f"charts/{title.replace(' ', '_')}.png"
+    charts_dir = os.path.join(PROJECT_ROOT, "charts")
+    os.makedirs(charts_dir, exist_ok=True)
+    path = os.path.join(charts_dir, f"{title.replace(' ', '_')}.png")
     fig.savefig(path, bbox_inches="tight", dpi=150)
     plt.close(fig)
     return path
 
 
 def initialise_brand():
-    # Register fonts
-    font_dir = "fonts"
+    font_dir = os.path.join(PROJECT_ROOT, "fonts")
     for font_file in os.listdir(font_dir):
         if font_file.endswith(".ttf"):
             fm.fontManager.addfont(os.path.join(font_dir, font_file))

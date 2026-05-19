@@ -434,10 +434,16 @@ def generate_monthly_slide_content(client):
     }
 
     VALID_DIMENSIONS = ["Ad Platform", "Ad Channel", "Channel", "Campaign"]
-    df = pd.DataFrame(client['timeseries_data'])
+    ts = client.get('timeseries_data', {})
+    ts_rows = [
+        {'Ad Channel': channel, 'Week number (ISO)': int(week_str)}
+        for channel, weeks in ts.items()
+        for week_str in weeks.keys()
+    ]
+    ts_df = pd.DataFrame(ts_rows) if ts_rows else pd.DataFrame()
     dimension_values = {
-        col: sorted(df[col].dropna().unique().tolist())
-        for col in VALID_DIMENSIONS if col in df.columns
+        col: sorted(ts_df[col].dropna().unique().tolist())
+        for col in VALID_DIMENSIONS if col in ts_df.columns
     }
 
     schema = {
@@ -662,7 +668,7 @@ def generate_monthly_slide_content(client):
                     "2) trends\n"
                     "Identify the most meaningful trends visible in paid_data_90_day. Each trend gets its own slide.\n"
                     "- title: a short, clear label for the trend (e.g. 'Paid Search ROAS Recovery', 'CPA Pressure Across Social').\n"
-                    "- summary: one sentence explaining the trend and why it matters.\n"
+                    "- summary: one snappy sentence (≤15 words) explaining the trend and why it matters.\n"
                     "- bullets: 2–5 supporting points with specific evidence from paid_data_90_day. "
                     "Focus on directional changes, inflection points, or persistent patterns. Avoid metric soup — pick the minimum evidence needed.\n"
                     "- graph: every trend must have a graph spec. Choose the graph that best visualises the trend over time using paid_data_90_day. "
@@ -673,7 +679,7 @@ def generate_monthly_slide_content(client):
                     "3) actions\n"
                     "One entry per task in the current plans_90_day (use only 'current' plans, not 'old').\n"
                     "- task: the task name exactly as it appears in plans_90_day.\n"
-                    "- summary: one concise client-friendly sentence describing what the task is and why it matters. No marketing fluff.\n"
+                    "- summary: one snappy client-friendly sentence (≤15 words) describing what the task is. No marketing fluff.\n"
                     "- status: the status exactly as it appears in plans_90_day.\n"
                     "- graph: if status is 'Complete', generate a graph spec that best illustrates the impact or context of this task. "
                     "If status is not 'Complete', set graph to null.\n"

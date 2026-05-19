@@ -464,7 +464,9 @@ def _render_gantt_chart(tasks, title):
               facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
 
     plt.tight_layout()
-    path = f"charts/{title.replace(' ', '_')}_gantt.png"
+    charts_dir = os.path.join(PROJECT_ROOT, "charts")
+    os.makedirs(charts_dir, exist_ok=True)
+    path = os.path.join(charts_dir, f"{title.replace(' ', '_')}_gantt.png")
     fig.savefig(path, bbox_inches='tight', dpi=150)
     plt.close(fig)
     return path

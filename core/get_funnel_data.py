@@ -70,7 +70,7 @@ def get_llm_data(client, breakdown_dimension, df, table_type):
     # Loop through all the channels and create a json entry broken down by breakdown
     for channel in ad_channels:
         # Skip over any channels that are not within logic
-        if channel not in ['Combined', 'Dispaly','Shopping', 'Paid Search', 'Paid Social', 'Paid Social Static', 'Paid Social Video', 'Video']:
+        if channel not in ['Combined', 'Display', 'Shopping', 'Paid Search', 'Performance Max', 'Paid Social', 'Paid Social Static', 'Paid Social Video', 'Video']:
             continue
 
         # Create df and filter down to the current channel
@@ -169,10 +169,7 @@ def apply_filters(df, client, breakdown_dimension, date_range):
         (df['Date'] <= date_range['end_date'])
     )
 
-    compare_range = (
-        date_range.get('compare_start_date') is not None and
-        date_range.get('compare_end_date') is not None
-    )
+    compare_range = bool(date_range.get('compare_start_date')) and bool(date_range.get('compare_end_date'))
 
     if compare_range:
         in_compare_range = (
