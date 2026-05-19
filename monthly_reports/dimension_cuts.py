@@ -6,6 +6,22 @@ from core.safe_div import safe_div
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+_PLATFORM_ALIASES = {
+    'google':    'Google Ads',
+    'microsoft': 'Microsoft Ads',
+    'bing':      'Microsoft Ads',
+    'meta':      'Facebook Ads',
+    'facebook':  'Facebook Ads',
+    'tiktok':    'TikTok Ads',
+}
+
+
+def _normalise_platform(value):
+    """Map shorthand platform names to the exact values used in the sheet."""
+    if not value:
+        return value
+    return _PLATFORM_ALIASES.get(value.lower().strip(), value)
+
 _ADDITIVE_METRIC_CANDIDATES = [
     ('Cost',               ['Cost (GBP)', 'Cost']),
     ('Transaction Revenue', ['Transaction Revenue (GBP)', 'Transaction Revenue']),
@@ -186,6 +202,8 @@ def fetch_trend_data(client_name, channel, dimension, channel_filter=None, platf
     Persists to dimension_data["{dimension}::{platform}::{channel}"] in the cached monthly JSON.
     Returns the full envelope dict.
     """
+    platform = _normalise_platform(platform)
+
     data_path = os.path.join(PROJECT_ROOT, 'storage', f'{client_name}_monthly_data.json')
     with open(data_path, 'r', encoding='utf-8') as f:
         client = json.load(f)

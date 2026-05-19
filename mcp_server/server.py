@@ -309,11 +309,11 @@ def fetch_trend_data(client_name: str, channel: str, dimension: str, channel_fil
     Use this once per trend slide during the slide-by-slide workflow.
 
     client_name: the client name as it appears in config.json.
-    channel: the Ad Channel to scope the data to (e.g. 'Paid Search', 'Paid Social'). Leave empty to include all channels.
+    channel: the Ad Channel to scope the data to (e.g. 'Paid Search', 'Shopping', 'Paid Social Static', 'Display'). Leave empty to include all channels.
     dimension: the column name to break down by (e.g. 'Campaign', 'Asset', 'Campaign Group', 'Ad Platform').
     channel_filter: optional JSON string {"type": "include"|"exclude", "channels": [...]} for
                     multi-channel or exclusion scoping. If omitted, data is scoped to channel only.
-    platform: the Ad Platform to scope the data to (e.g. 'Google', 'Meta'). Leave empty to include all platforms.
+    platform: the Ad Platform to scope the data to. Must match the exact value in the sheet: 'Google Ads', 'Microsoft Ads', 'Facebook Ads', 'TikTok Ads'. Leave empty to include all platforms.
     platform_filter: optional JSON string {"type": "include"|"exclude", "platforms": [...]} for
                      multi-platform or exclusion scoping. If omitted, data is scoped to platform only.
 
