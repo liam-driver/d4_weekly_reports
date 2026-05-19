@@ -75,7 +75,7 @@ def build_dimension_df(client, data_source, comparison_type):
                 for metric, vals in metrics.items():
                     row[metric] = _parse_val(vals.get('curr', '0') if isinstance(vals, dict) else vals)
                 rows.append(row)
-        df = pd.DataFrame(rows) if rows else pd.DataFrame()
+        df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[dimension_col, 'Week number (ISO)'])
         if not df.empty:
             df['Week number (ISO)'] = df['Week number (ISO)'].astype(int)
             df = df.sort_values('Week number (ISO)').reset_index(drop=True)
@@ -87,7 +87,7 @@ def build_dimension_df(client, data_source, comparison_type):
             for metric, vals in metrics.items():
                 row[metric] = _parse_val(vals.get('curr', '0') if isinstance(vals, dict) else vals)
             rows.append(row)
-        df = pd.DataFrame(rows) if rows else pd.DataFrame()
+        df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[dimension_col])
 
     return df
 
@@ -363,6 +363,8 @@ def render_pie_chart(graph, client):
     df = _build_df_for_spec(client, graph)
 
     metrics_present = [m for m in metrics if m in df.columns]
+    if not metrics_present:
+        return None
     if x_col not in df.columns or x_col in metrics_present:
         x_col = 'Week number (ISO)'
     for m in metrics_present:
@@ -419,6 +421,8 @@ def render_line_bar_combo_chart(graph, client):
     df = _build_df_for_spec(client, graph)
 
     metrics_present = [m for m in metrics if m in df.columns]
+    if len(metrics_present) < 2:
+        return None
     if x_col not in df.columns or x_col in metrics_present:
         x_col = 'Week number (ISO)'
     for m in metrics_present:
@@ -510,6 +514,8 @@ def render_horizontal_bar_chart(graph, client):
     df = _build_df_for_spec(client, graph)
 
     metrics = [m for m in metrics if m in df.columns]
+    if not metrics:
+        return None
     if x_col not in df.columns or x_col in metrics:
         x_col = 'Week number (ISO)'
     for m in metrics:
