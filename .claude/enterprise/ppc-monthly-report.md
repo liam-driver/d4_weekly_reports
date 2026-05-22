@@ -326,13 +326,17 @@ All graph specs must conform exactly to this schema. The pipeline will fail at r
 
 ### Valid dimensions.x
 
-`Week number (ISO)`, `Date`, `Month`, `Year`
+The correct value depends on `style`:
 
-Use `Week number (ISO)` for timeseries trends — this is the standard x-axis for 90-day paid data.
+- **`style: trend`** — use a time column: `Week number (ISO)`, `Date`, `Month`, `Year`. Use `Week number (ISO)` for 90-day paid data. Use `Month` with `time_dimension='Month'` and `start_date_override` for YTD charts.
+- **`style: comparison` or `style: distribution`** — use the dimension column name: `Campaign`, `Ad Platform`, `Ad Channel`, `Campaign Group`. The renderer resolves the category column from `data_source` and ignores any time dimension that is absent from the data.
 
 ### Valid dimensions.group_by
 
 `Ad Platform`, `Ad Channel`, `Channel`, `Campaign`
+
+For **trend** charts: set `group_by` to split data into multiple series — one line/bar cluster per value (e.g. one line per Campaign, one bar group per Ad Channel). The renderer uses the top 6 values by total of the first metric. Omit for single-aggregate charts.
+For **comparison/distribution** charts: `group_by` is not needed — `dimensions.x` already identifies the category column.
 
 ### Valid metrics
 

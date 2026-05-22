@@ -124,13 +124,31 @@ def build_comparison_df(client, data_source, comparison_type):
 def _build_df_for_spec(client, spec):
     """Return the correctly sourced and filtered DataFrame for a graph spec."""
     data_source = spec.get('data_source')
+    style = spec.get('style', 'trend')
     if data_source:
-        x_dim = spec.get('dimensions', {}).get('x', '')
-        ct = 'timeseries' if x_dim in TIME_DIMENSIONS else 'mom'
+        if style in ('comparison', 'distribution'):
+            ct = 'mom'
+        else:
+            x_dim = spec.get('dimensions', {}).get('x', '')
+            ct = 'timeseries' if x_dim in TIME_DIMENSIONS else 'mom'
         df = build_dimension_df(client, data_source, ct)
     else:
         df = build_monthly_df(client)
     return _apply_monthly_filters(df, spec.get('filters', '{}'))
+
+
+def _resolve_x_col(spec, df, metrics):
+    """Return the x column to use, falling back to the dimension column when the spec's declared
+    x is a time dimension not present in the dataframe (comparison/distribution charts)."""
+    x_col = spec.get('dimensions', {}).get('x', 'Week number (ISO)')
+    if x_col not in df.columns or x_col in metrics:
+        data_source = spec.get('data_source')
+        if data_source:
+            dim_col = data_source.split('::')[0]
+            if dim_col in df.columns:
+                return dim_col
+        return next((td for td in TIME_DIMENSIONS if td in df.columns), x_col)
+    return x_col
 
 
 def _apply_monthly_filters(df, filters):
@@ -159,11 +177,7 @@ def render_graph(client, spec):
 def render_line_chart(graph, client):
     # ── 1. EXTRACT THE SPEC ──────────────────────────────────────────
     title   = graph["title"]
-    filters = graph["filters"]
-    x_col   = graph["dimensions"]["x"]
     metrics = graph["metrics"][:2]
-    start   = graph["date_range"]["start"]
-    end     = graph["date_range"]["end"]
 
     # ── 2. CONFIGURE THE DATAFRAME ───────────────────────────────────
     df = _build_df_for_spec(client, graph)
@@ -171,73 +185,81 @@ def render_line_chart(graph, client):
     metrics = [m for m in metrics if m in df.columns]
     if not metrics:
         return None
-    if x_col not in df.columns or x_col in metrics:
-        x_col = next((td for td in TIME_DIMENSIONS if td in df.columns), 'Week number (ISO)')
+
+    x_col    = _resolve_x_col(graph, df, metrics)
+    group_by = graph.get('dimensions', {}).get('group_by')
+    use_group_by = bool(group_by and group_by in df.columns and group_by != x_col)
+
     for metric in metrics:
         df[metric] = pd.to_numeric(df[metric], errors='coerce')
-    df = df.groupby(x_col, as_index=False)[metrics].sum()
 
     # ── 3. CREATE THE FIGURE ─────────────────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
-    # When multiple metrics are present, use a secondary y-axis so metrics
-    # with very different scales (e.g. Impressions vs CTR) are both visible
-    ax2 = ax.twinx() if len(metrics) > 1 else None
+    ax2 = ax.twinx() if (len(metrics) > 1 and not use_group_by) else None
 
-    # ── 4. PLOT EACH METRIC AS A LINE ────────────────────────────────
-    # Use index positions for non-Date x columns (e.g. ISO week numbers are
-    # integers like 14, 15, 16 — plotting them directly misaligns the ticks)
-    x_pos = df[x_col] if x_col == 'Date' else range(len(df))
-
-    for i, metric in enumerate(metrics):
-        colour = BRAND["colours"][i % len(BRAND["colours"])]
-        target_ax = ax2 if (i > 0 and ax2 is not None) else ax
-        target_ax.plot(
-            x_pos,
-            df[metric],
-            linewidth=2.5,
-            marker="o",
-            markersize=4,
-            label=metric,
-            color=colour
+    # ── 4. PLOT ──────────────────────────────────────────────────────
+    if use_group_by:
+        # One line per group_by value (top 6 by total of first metric)
+        top_groups = (
+            df.groupby(group_by)[metrics[0]].sum()
+            .nlargest(6).index.tolist()
         )
-        target_ax.fill_between(
-            x_pos,
-            df[metric],
-            alpha=0.1,
-            color=colour
-        )
+        all_x_vals = sorted(df[x_col].unique())
+        colour_cycle = BRAND["colours"] * (len(top_groups) // len(BRAND["colours"]) + 1)
+        for i, group_val in enumerate(top_groups):
+            g_df = (df[df[group_by] == group_val]
+                    .groupby(x_col, as_index=False)[metrics].sum()
+                    .sort_values(x_col))
+            x_pos = g_df[x_col] if x_col == 'Date' else range(len(g_df))
+            ax.plot(x_pos, g_df[metrics[0]], linewidth=2, marker='o', markersize=3,
+                    label=str(group_val), color=colour_cycle[i % len(colour_cycle)])
+            ax.fill_between(x_pos, g_df[metrics[0]], alpha=0.07,
+                            color=colour_cycle[i % len(colour_cycle)])
+        if x_col != 'Date':
+            ax.set_xticks(range(len(all_x_vals)))
+            ax.set_xticklabels([str(v) for v in all_x_vals], rotation=45, ha='right')
+    else:
+        # Single-series: aggregate all rows per x_col value
+        df = df.groupby(x_col, as_index=False)[metrics].sum()
+        x_pos = df[x_col] if x_col == 'Date' else range(len(df))
+        for i, metric in enumerate(metrics):
+            colour = BRAND["colours"][i % len(BRAND["colours"])]
+            target_ax = ax2 if (i > 0 and ax2 is not None) else ax
+            target_ax.plot(x_pos, df[metric], linewidth=2.5, marker='o', markersize=4,
+                           label=metric, color=colour)
+            target_ax.fill_between(x_pos, df[metric], alpha=0.1, color=colour)
+        if x_col != 'Date':
+            ax.set_xticks(list(x_pos))
+            ax.set_xticklabels(df[x_col], rotation=45, ha='right')
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=12, color=BRAND["quaternary"])
-    ax.set_xlabel(x_col.capitalize(), fontsize=11)
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=12, color=BRAND['quaternary'])
+    ax.set_xlabel(x_col, fontsize=11)
 
-    if ax2 is not None:
-        ax.set_ylabel(metrics[0], fontsize=11, color=BRAND["quaternary"])
-        ax2.set_ylabel(metrics[1], fontsize=11, color=BRAND["quaternary"])
-        ax2.tick_params(axis="y", colors=BRAND["quaternary"])
+    if not use_group_by and ax2 is not None:
+        ax.set_ylabel(metrics[0], fontsize=11, color=BRAND['quaternary'])
+        ax2.set_ylabel(metrics[1], fontsize=11, color=BRAND['quaternary'])
+        ax2.tick_params(axis='y', colors=BRAND['quaternary'])
     else:
-        ax.set_ylabel(metrics[0], fontsize=11, color=BRAND["quaternary"])
+        ax.set_ylabel(metrics[0], fontsize=11, color=BRAND['quaternary'])
 
-    if metrics and metrics[0] in PCT_METRICS:
+    if metrics[0] in PCT_METRICS:
         ax.yaxis.set_major_formatter(_PCT_FMT)
     if ax2 and len(metrics) > 1 and metrics[1] in PCT_METRICS:
         ax2.yaxis.set_major_formatter(_PCT_FMT)
 
     if x_col == 'Date':
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
         fig.autofmt_xdate(rotation=45)
-    else:
-        ax.set_xticks(list(x_pos))
-        ax.set_xticklabels(df[x_col], rotation=45, ha='right')
 
     ax.grid(True, alpha=0.3)
-
     lines1, labels1 = ax.get_legend_handles_labels()
     if ax2 is not None:
         lines2, labels2 = ax2.get_legend_handles_labels()
-        ax.legend(lines1 + lines2, labels1 + labels2, facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
+        ax.legend(lines1 + lines2, labels1 + labels2,
+                  facecolor=BRAND['background'], edgecolor=BRAND['quaternary'])
     else:
-        ax.legend(lines1, labels1, facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
+        ax.legend(lines1, labels1, facecolor=BRAND['background'], edgecolor=BRAND['quaternary'])
 
     plt.tight_layout()
 
@@ -252,11 +274,7 @@ def render_line_chart(graph, client):
 def render_bar_chart(graph, client):
     # ── 1. EXTRACT THE SPEC ──────────────────────────────────────────
     title   = graph["title"]
-    filters = graph["filters"]
-    x_col   = graph["dimensions"]["x"]
     metrics = graph["metrics"]
-    start   = graph["date_range"]["start"]
-    end     = graph["date_range"]["end"]
 
     # ── 2. CONFIGURE THE DATAFRAME ───────────────────────────────────
     df = _build_df_for_spec(client, graph)
@@ -264,46 +282,62 @@ def render_bar_chart(graph, client):
     metrics = [m for m in metrics if m in df.columns]
     if not metrics:
         return None
-    if x_col not in df.columns or x_col in metrics:
-        x_col = 'Week number (ISO)'
+    x_col    = _resolve_x_col(graph, df, metrics)
+    group_by = graph.get('dimensions', {}).get('group_by')
+    use_group_by = bool(group_by and group_by in df.columns and group_by != x_col)
+
     for metric in metrics:
         df[metric] = pd.to_numeric(df[metric], errors='coerce')
-    df = df.groupby(x_col, as_index=False)[metrics].sum()
 
     # ── 3. CREATE THE FIGURE ─────────────────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    # ── 4. PLOT EACH METRIC AS A BAR ─────────────────────────────────
-    # If multiple metrics, bars are placed side by side
-    num_metrics = len(metrics)
-    bar_width = 0.8 / num_metrics  # total width split across metrics
-    x = range(len(df[x_col]))
-
-    for i, metric in enumerate(metrics):
-        colour = BRAND["colours"][i % len(BRAND["colours"])]
-        offset = (i - num_metrics / 2 + 0.5) * bar_width  # centre the group
-        ax.bar(
-            [pos + offset for pos in x],
-            df[metric],
-            width=bar_width,
-            label=metric,
-            color=colour,
-            alpha=0.9
+    # ── 4. PLOT ──────────────────────────────────────────────────────
+    if use_group_by:
+        # Grouped bars: one cluster per x_col value, one bar per group_by value
+        top_groups = (
+            df.groupby(group_by)[metrics[0]].sum()
+            .nlargest(6).index.tolist()
+        )
+        x_vals = sorted(df[x_col].unique())
+        x = range(len(x_vals))
+        bar_width = 0.8 / len(top_groups)
+        colour_cycle = BRAND["colours"] * (len(top_groups) // len(BRAND["colours"]) + 1)
+        for i, group_val in enumerate(top_groups):
+            g_df = df[df[group_by] == group_val].groupby(x_col, as_index=False)[metrics].sum()
+            heights = [
+                float(g_df[g_df[x_col] == xv][metrics[0]].values[0])
+                if xv in g_df[x_col].values else 0.0
+                for xv in x_vals
+            ]
+            offset = (i - len(top_groups) / 2 + 0.5) * bar_width
+            ax.bar([pos + offset for pos in x], heights, width=bar_width,
+                   label=str(group_val), color=colour_cycle[i % len(colour_cycle)], alpha=0.9)
+        ax.set_xticks(list(x))
+        ax.set_xticklabels([str(v) for v in x_vals], rotation=45, ha='right')
+    else:
+        df = df.groupby(x_col, as_index=False)[metrics].sum()
+        num_metrics = len(metrics)
+        bar_width = 0.8 / num_metrics
+        x = range(len(df[x_col]))
+        for i, metric in enumerate(metrics):
+            colour = BRAND["colours"][i % len(BRAND["colours"])]
+            offset = (i - num_metrics / 2 + 0.5) * bar_width
+            ax.bar([pos + offset for pos in x], df[metric], width=bar_width,
+                   label=metric, color=colour, alpha=0.9)
+        ax.set_xticks(list(x))
+        ax.set_xticklabels(
+            [d.strftime("%b %d") if hasattr(d, 'strftime') else str(d) for d in df[x_col]],
+            rotation=45, ha='right'
         )
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=12, color=BRAND["quaternary"])
-    ax.set_xlabel(x_col.capitalize(), fontsize=11)
-    ax.set_ylabel("Value", fontsize=11)
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(
-        [d.strftime("%b %d") if hasattr(d, 'strftime') else str(d) for d in df[x_col]],
-        rotation=45,
-        ha="right"
-    )
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=12, color=BRAND['quaternary'])
+    ax.set_xlabel(x_col, fontsize=11)
+    ax.set_ylabel('Value', fontsize=11)
     if metrics and all(m in PCT_METRICS for m in metrics):
         ax.yaxis.set_major_formatter(_PCT_FMT)
-    ax.grid(True, alpha=0.2, axis="y")
+    ax.grid(True, alpha=0.2, axis='y')
     ax.legend(facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
     plt.tight_layout()
 
@@ -319,11 +353,7 @@ def render_bar_chart(graph, client):
 def render_stacked_bar_chart(graph, client):
     # ── 1. EXTRACT THE SPEC ──────────────────────────────────────────
     title   = graph["title"]
-    filters = graph["filters"]
-    x_col   = graph["dimensions"]["x"]
     metrics = graph["metrics"]
-    start   = graph["date_range"]["start"]
-    end     = graph["date_range"]["end"]
 
     # ── 2. CONFIGURE THE DATAFRAME ───────────────────────────────────
     df = _build_df_for_spec(client, graph)
@@ -331,49 +361,63 @@ def render_stacked_bar_chart(graph, client):
     metrics_present = [m for m in metrics if m in df.columns]
     if not metrics_present:
         return None
-    if x_col not in df.columns or x_col in metrics_present:
-        x_col = 'Week number (ISO)'
+    x_col    = _resolve_x_col(graph, df, metrics_present)
+    group_by = graph.get('dimensions', {}).get('group_by')
+    use_group_by = bool(group_by and group_by in df.columns and group_by != x_col)
+
     for m in metrics_present:
         df[m] = pd.to_numeric(df[m], errors='coerce')
-    df = df.groupby(x_col, as_index=False)[metrics_present].sum()
     metrics = metrics_present
 
     # ── 3. CREATE THE FIGURE ─────────────────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    # ── 4. PLOT STACKED BARS ─────────────────────────────────────────
-    # Each metric is stacked on top of the previous one
-    # We track the bottom of each stack so bars sit on top of each other
-    x = range(len(df[x_col]))
-    bottoms = [0] * len(df)  # start all bars from 0
-
-    for i, metric in enumerate(metrics):
-        colour = BRAND["colours"][i % len(BRAND["colours"])]
-        ax.bar(
-            x,
-            df[metric],
-            bottom=bottoms,  # where this bar starts (top of previous)
-            width=0.6,
-            label=metric,
-            color=colour,
-            alpha=0.9
+    # ── 4. PLOT ──────────────────────────────────────────────────────
+    if use_group_by:
+        # Stack per group_by value over x_col (e.g. Cost by Ad Channel per week)
+        top_groups = (
+            df.groupby(group_by)[metrics[0]].sum()
+            .nlargest(6).index.tolist()
         )
-        # Update bottoms so next metric stacks on top
-        bottoms = [b + v for b, v in zip(bottoms, df[metric])]
+        x_vals = sorted(df[x_col].unique())
+        x = range(len(x_vals))
+        bottoms = [0.0] * len(x_vals)
+        colour_cycle = BRAND["colours"] * (len(top_groups) // len(BRAND["colours"]) + 1)
+        for i, group_val in enumerate(top_groups):
+            g_df = df[df[group_by] == group_val].groupby(x_col, as_index=False)[metrics].sum()
+            heights = [
+                float(g_df[g_df[x_col] == xv][metrics[0]].values[0])
+                if xv in g_df[x_col].values else 0.0
+                for xv in x_vals
+            ]
+            ax.bar(x, heights, bottom=bottoms, width=0.6, label=str(group_val),
+                   color=colour_cycle[i % len(colour_cycle)], alpha=0.9)
+            bottoms = [b + h for b, h in zip(bottoms, heights)]
+        ax.set_xticks(list(x))
+        ax.set_xticklabels([str(v) for v in x_vals], rotation=45, ha='right')
+    else:
+        # Stack per metric over x_col (existing behaviour)
+        df = df.groupby(x_col, as_index=False)[metrics].sum()
+        x = range(len(df[x_col]))
+        bottoms = [0] * len(df)
+        for i, metric in enumerate(metrics):
+            colour = BRAND["colours"][i % len(BRAND["colours"])]
+            ax.bar(x, df[metric], bottom=bottoms, width=0.6, label=metric,
+                   color=colour, alpha=0.9)
+            bottoms = [b + v for b, v in zip(bottoms, df[metric])]
+        ax.set_xticks(list(x))
+        ax.set_xticklabels(
+            [d.strftime("%b %d") if hasattr(d, 'strftime') else str(d) for d in df[x_col]],
+            rotation=45, ha='right'
+        )
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=12, color=BRAND["quaternary"])
-    ax.set_xlabel(x_col.capitalize(), fontsize=11)
-    ax.set_ylabel("Value", fontsize=11)
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(
-        [d.strftime("%b %d") if hasattr(d, 'strftime') else str(d) for d in df[x_col]],
-        rotation=45,
-        ha="right"
-    )
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=12, color=BRAND['quaternary'])
+    ax.set_xlabel(x_col, fontsize=11)
+    ax.set_ylabel('Value', fontsize=11)
     if metrics and all(m in PCT_METRICS for m in metrics):
         ax.yaxis.set_major_formatter(_PCT_FMT)
-    ax.grid(True, alpha=0.2, axis="y")
+    ax.grid(True, alpha=0.2, axis='y')
     ax.legend(facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
     plt.tight_layout()
 
@@ -401,8 +445,7 @@ def render_pie_chart(graph, client):
     metrics_present = [m for m in metrics if m in df.columns]
     if not metrics_present:
         return None
-    if x_col not in df.columns or x_col in metrics_present:
-        x_col = 'Week number (ISO)'
+    x_col = _resolve_x_col(graph, df, metrics_present)
     for m in metrics_present:
         df[m] = pd.to_numeric(df[m], errors='coerce')
     df = df.groupby(x_col, as_index=False)[metrics_present].sum()
@@ -459,8 +502,7 @@ def render_line_bar_combo_chart(graph, client):
     metrics_present = [m for m in metrics if m in df.columns]
     if len(metrics_present) < 2:
         return None
-    if x_col not in df.columns or x_col in metrics_present:
-        x_col = 'Week number (ISO)'
+    x_col = _resolve_x_col(graph, df, metrics_present)
     for m in metrics_present:
         df[m] = pd.to_numeric(df[m], errors='coerce')
     df = df.groupby(x_col, as_index=False)[metrics_present].sum()
@@ -552,8 +594,7 @@ def render_horizontal_bar_chart(graph, client):
     metrics = [m for m in metrics if m in df.columns]
     if not metrics:
         return None
-    if x_col not in df.columns or x_col in metrics:
-        x_col = 'Week number (ISO)'
+    x_col = _resolve_x_col(graph, df, metrics)
     for m in metrics:
         df[m] = pd.to_numeric(df[m], errors='coerce')
     df = df.groupby(x_col, as_index=False)[metrics].sum()
