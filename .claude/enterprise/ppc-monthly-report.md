@@ -82,16 +82,17 @@ Based on the fetched data, propose a slide template — the layout type that bes
 
 Once the template is confirmed, render the full slide in the **Slide Preview Format** section below — title, summary, bullets, and graph spec. Follow all Commentary Rules when generating content.
 
-Then preview the graph inline:
+Then preview the graph inline by calling the `preview_graph` MCP tool:
+- `client_name`: the client name
+- `graph_spec`: the graph spec JSON object serialised as a string
 
-1. Write the graph spec JSON object to `storage/.preview_spec.json` using the Write tool
-2. Run: `python monthly_reports/preview_graph.py "<client_name>"`
-3. If the script exits with an error, surface the error message verbatim and do not offer confirmation — the spec must be fixed first
-4. If it succeeds, read the PNG at the printed path and display it inline below the slide text
+The tool returns the chart as an inline image — display it directly below the slide text. This is mandatory. Do not skip, defer, or substitute another rendering method.
+
+If the tool returns an error, surface it verbatim and do not offer confirmation — fix the spec first.
 
 **2e. Iterate**
 
-Respond to user feedback by re-rendering the slide. On every iteration, always re-run the graph preview steps from 2d — do not attempt to determine whether the spec changed.
+Respond to user feedback by re-rendering the slide. On every iteration, always re-call `preview_graph` — do not attempt to determine whether the spec changed.
 
 **2f. Confirm and continue**
 

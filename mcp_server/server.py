@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import base64
 import json
 import secrets
 import smtplib
@@ -346,6 +347,46 @@ def fetch_trend_data(client_name: str, channel: str, dimension: str, channel_fil
         time_dimension, start_date_override or None
     )
     return json.dumps(result, ensure_ascii=False)
+
+
+@mcp.tool()
+def preview_graph(client_name: str, graph_spec: str) -> list:
+    """Render a graph preview for a trend slide and return it as an inline image.
+    Call this after confirming the slide template, before asking the user to confirm the slide.
+
+    client_name: the client name as it appears in config.json.
+    graph_spec: the graph spec JSON object serialised as a string — must match the Graph Schema
+                in the monthly report instructions exactly.
+
+    Returns the chart as an inline image so it can be displayed in the conversation.
+    Raises an error (do not offer confirmation) if the spec is invalid or metrics are missing.
+    """
+    from mcp.types import ImageContent
+    _validate_client_name(client_name)
+
+    data_path = os.path.join(PROJECT_ROOT, "storage", f"{client_name}_monthly_data.json")
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"No cached data for '{client_name}' — run fetch_monthly_client_data first")
+
+    with open(data_path, encoding="utf-8") as f:
+        client_data = json.load(f)
+
+    spec = json.loads(graph_spec)
+
+    from monthly_reports.generate_visualisation import render_graph, initialise_brand
+    initialise_brand()
+
+    path = render_graph(client_data, spec)
+    if path is None:
+        raise ValueError(
+            "render_graph returned None — check that all metrics exist in the data "
+            "and the graph_type is valid"
+        )
+
+    with open(path, "rb") as f:
+        image_data = base64.b64encode(f.read()).decode("utf-8")
+
+    return [ImageContent(type="image", data=image_data, mimeType="image/png")]
 
 
 @mcp.tool()
