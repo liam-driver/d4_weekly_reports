@@ -12,6 +12,11 @@ from core.config_dates import config_dates
 from core.get_funnel_data import initialise_df, apply_filters
 from core.get_run_rate import tat_get_run_rate
 from weekly_reports.generate_df import *
+from traps_and_tripwires.forbes import (
+    load_forbes_department_budgets,
+    run_forbes_department_checks,
+    build_forbes_dept_block,
+)
 
 # ── CHECKS ────────────────────────────────────────────────────────────────────
 
@@ -158,6 +163,8 @@ def delete_slack_message(token, channel, ts):
 
 def delete_previous_run(token, last_run):
     for msg in last_run.get("client_messages", {}).values():
+        for thread_ts in msg.get("thread_ts_list", []):
+            delete_slack_message(token, msg["channel_id"], thread_ts)
         delete_slack_message(token, msg["channel_id"], msg["ts"])
 
 
@@ -245,8 +252,14 @@ def main():
     last_run = load_last_run()
     delete_previous_run(slack_token, last_run)
 
+    forbes_dept_budgets = {}
+    if any(c['name'] == 'Forbes' for c in clients):
+        forbes_dept_budgets = load_forbes_department_budgets()
+
     client_results = []
     client_channels = {}
+    forbes_dept_results = []
+
     for client in clients:
         client = config_dates(client)
         client['end_date'] = client['end_date'] + timedelta(days=1)
@@ -254,6 +267,9 @@ def main():
         try:
             checks = run_checks(client)
             client_results.append((client["name"], checks))
+            if client['name'] == 'Forbes':
+                forbes_df = initialise_df(client)
+                forbes_dept_results = run_forbes_department_checks(client, forbes_df, forbes_dept_budgets)
         except Exception as e:
             log_error(f"Checks failed for {client['name']}: {e}")
 
@@ -272,6 +288,20 @@ def main():
         if ts:
             client_messages[client_name] = {"channel_id": channel_id, "ts": ts}
 
+        if client_name == 'Forbes' and ts and forbes_dept_results:
+            thread_ts_list = []
+            for dept_name, dept_result in forbes_dept_results:
+                dept_ts = post_slack_message(
+                    slack_token, channel_id,
+                    [build_forbes_dept_block(dept_name, dept_result)],
+                    thread_ts=ts,
+                )
+                if dept_ts:
+                    thread_ts_list.append(dept_ts)
+            if thread_ts_list:
+                client_messages['Forbes']['thread_ts_list'] = thread_ts_list
+
     save_last_run({"client_messages": client_messages})
 
-main()
+if __name__ == "__main__":
+    main()

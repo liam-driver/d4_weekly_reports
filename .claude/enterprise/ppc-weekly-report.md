@@ -227,7 +227,7 @@ When the user approves and asks to send, generate the following HTML exactly, su
   <br>
   <p><b>WIP: </b></p>
   [Repeat for each current task in plan_overview — each task block is:]
-    [loop index].) [task.task]
+    [loop index]) [task.task]
     <ul>
       <li>Overview: [task.summary]</li>
       <li>Status: [task.status]</li>
@@ -248,7 +248,7 @@ When the user approves and asks to send, generate the following HTML exactly, su
   <br>
   <p><b>Insights: </b></p>
   [Repeat for each point in performance_points — each point block is:]
-    [loop index].) [point.title]
+    [loop index]) [point.title]
     <ul>
       <li>[point.summary — full paragraph, no line breaks]</li>
     </ul>
