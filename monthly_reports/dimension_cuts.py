@@ -6,10 +6,84 @@ from core.safe_div import safe_div
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-def _build_data_key(dimension, filters):
-    if not filters:
+_VALID_DATE_RANGES = ('previous_7_days', 'mtd', 'ytd', 'last_90_days')
+
+_DATE_RANGE_LABELS = {
+    'previous_7_days': 'Previous 7 Days',
+    'mtd':             'Month-to-Date',
+    'ytd':             'Year-to-Date',
+    'last_90_days':    'Last 90 Days',
+}
+
+_DEFAULT_TIME_DIMENSION = {
+    'previous_7_days': 'Date',
+    'mtd':             'Date',
+    'ytd':             'Month',
+    'last_90_days':    'Week number (ISO)',
+}
+
+
+def _resolve_date_windows(date_range: str) -> dict:
+    """Compute current, previous-period, and previous-year windows for a date_range label.
+    All windows apply the 2-day GA4 lag (effective_today = today - 2)."""
+    if date_range not in _VALID_DATE_RANGES:
+        raise ValueError(
+            f"Unknown date_range '{date_range}'. Must be one of: {', '.join(_VALID_DATE_RANGES)}"
+        )
+    today = pd.Timestamp.now().normalize()
+    effective_today = (today - pd.DateOffset(days=2)).normalize()
+
+    if date_range == 'previous_7_days':
+        current_start = (effective_today - pd.DateOffset(days=6)).normalize()
+        current_end   = effective_today
+        prev_start    = (current_start - pd.DateOffset(days=7)).normalize()
+        prev_end      = (current_start - pd.DateOffset(days=1)).normalize()
+        yoy_start     = (current_start - pd.DateOffset(years=1)).normalize()
+        yoy_end       = (current_end   - pd.DateOffset(years=1)).normalize()
+
+    elif date_range == 'mtd':
+        current_start = effective_today.replace(day=1)
+        current_end   = effective_today
+        prev_start    = (current_start - pd.DateOffset(months=1)).normalize()
+        prev_end      = prev_start + pd.DateOffset(days=(current_end - current_start).days)
+        yoy_start     = (current_start - pd.DateOffset(years=1)).normalize()
+        yoy_end       = (current_end   - pd.DateOffset(years=1)).normalize()
+
+    elif date_range == 'ytd':
+        current_start = effective_today.replace(month=1, day=1)
+        current_end   = effective_today
+        prev_start    = None
+        prev_end      = None
+        yoy_start     = (current_start - pd.DateOffset(years=1)).normalize()
+        yoy_end       = (current_end   - pd.DateOffset(years=1)).normalize()
+
+    elif date_range == 'last_90_days':
+        current_start = (effective_today - pd.DateOffset(days=89)).normalize()
+        current_end   = effective_today
+        prev_start    = (current_start - pd.DateOffset(days=90)).normalize()
+        prev_end      = (current_start - pd.DateOffset(days=1)).normalize()
+        yoy_start     = (current_start - pd.DateOffset(years=1)).normalize()
+        yoy_end       = (current_end   - pd.DateOffset(years=1)).normalize()
+
+    return {
+        'current_start':          current_start,
+        'current_end':            current_end,
+        'prev_start':             prev_start,
+        'prev_end':               prev_end,
+        'yoy_start':              yoy_start,
+        'yoy_end':                yoy_end,
+        'default_time_dimension': _DEFAULT_TIME_DIMENSION[date_range],
+        'label':                  _DATE_RANGE_LABELS[date_range],
+        'prev_period_available':  prev_start is not None,
+    }
+
+
+def _build_data_key(dimension, filters, date_range=None):
+    parts = [f"{col}={val}" for col, val in sorted(filters.items())] if filters else []
+    if date_range:
+        parts.append(f"date_range={date_range}")
+    if not parts:
         return dimension
-    parts = [f"{col}={val}" for col, val in sorted(filters.items())]
     return "::".join([dimension] + parts)
 
 
@@ -203,23 +277,28 @@ def get_dimension_timeseries(client, dimension_column, filters=None, time_dimens
     return result
 
 
-def fetch_trend_data(client_name, channel, dimension, channel_filter=None, platform=None, platform_filter=None, time_dimension='Week number (ISO)', start_date_override=None):
+def fetch_trend_data(client_name, channel, dimension, channel_filter=None, platform=None, platform_filter=None, time_dimension=None, date_range='mtd'):
     """
-    Fetches MoM, YoY, and timeseries data for a Trend Topic scoped by channel/platform,
-    broken down by dimension. Persists to dimension_data[data_key] in the cached monthly JSON.
+    Fetches Previous Period, Previous Year, and timeseries data for a Trend Topic scoped by
+    channel/platform, broken down by dimension. Persists to dimension_data[data_key] in the
+    cached monthly JSON.
 
+    date_range: one of 'previous_7_days', 'mtd', 'ytd', 'last_90_days' (default 'mtd').
+                Controls the current period window, comparison windows, and default time_dimension.
     time_dimension: column to group the timeseries by ('Week number (ISO)', 'Month', 'Year', 'Date').
-    start_date_override: ISO date string to extend the timeseries lookback (e.g. start of year for YTD).
+                    Defaults to the recommended dimension for the selected date_range if omitted.
     Returns the full envelope dict.
     """
     data_path = os.path.join(PROJECT_ROOT, 'storage', f'{client_name}_monthly_data.json')
     with open(data_path, 'r', encoding='utf-8') as f:
         client = json.load(f)
 
-    for key in ('start_date', 'end_date', 'compare_start_mom', 'compare_end_mom',
-                'compare_start_yoy', 'compare_end_yoy'):
-        if key in client and isinstance(client[key], str):
-            client[key] = pd.Timestamp(client[key])
+    windows = _resolve_date_windows(date_range)
+    effective_time_dimension = time_dimension or windows['default_time_dimension']
+
+    # Override client date window with the resolved range
+    client['start_date'] = windows['current_start']
+    client['end_date']   = windows['current_end']
 
     # Build scope filters from channel / platform params
     filters = {}
@@ -235,24 +314,35 @@ def fetch_trend_data(client_name, channel, dimension, channel_filter=None, platf
 
     filters = filters or None
 
-    client['compare_start_date'] = client['compare_start_mom']
-    client['compare_end_date'] = client['compare_end_mom']
-    data_mom = get_dimension_cut(client, dimension, filters)
+    # Previous Period (omitted for YTD)
+    if windows['prev_period_available']:
+        client['compare_start_date'] = windows['prev_start']
+        client['compare_end_date']   = windows['prev_end']
+        data_previous_period = get_dimension_cut(client, dimension, filters)
+    else:
+        data_previous_period = {}
 
-    client['compare_start_date'] = client['compare_start_yoy']
-    client['compare_end_date'] = client['compare_end_yoy']
-    data_yoy = get_dimension_cut(client, dimension, filters)
+    # Previous Year
+    client['compare_start_date'] = windows['yoy_start']
+    client['compare_end_date']   = windows['yoy_end']
+    data_previous_year = get_dimension_cut(client, dimension, filters)
 
-    data_timeseries = get_dimension_timeseries(client, dimension, filters, time_dimension, start_date_override)
+    # Timeseries: window driven by date_range
+    data_timeseries = get_dimension_timeseries(
+        client, dimension, filters, effective_time_dimension,
+        windows['current_start'].strftime('%Y-%m-%d')
+    )
 
-    data_key = _build_data_key(dimension, filters)
+    data_key = _build_data_key(dimension, filters, date_range)
 
     if not isinstance(client.get('dimension_data'), dict):
         client['dimension_data'] = {}
+    # Store under mom/yoy keys for renderer compatibility
     client['dimension_data'][data_key] = {
-        'time_dimension': time_dimension,
-        'mom':            data_mom,
-        'yoy':            data_yoy,
+        'date_range':     date_range,
+        'time_dimension': effective_time_dimension,
+        'mom':            data_previous_period,
+        'yoy':            data_previous_year,
         'timeseries':     data_timeseries,
     }
 
@@ -260,13 +350,29 @@ def fetch_trend_data(client_name, channel, dimension, channel_filter=None, platf
     with open(data_path, 'w', encoding='utf-8') as f:
         json.dump(client, f, ensure_ascii=False, indent=2, cls=TimestampEncoder)
 
+    fmt = '%d/%m/%Y'
+    resolved_dates = {
+        'current_start': windows['current_start'].strftime(fmt),
+        'current_end':   windows['current_end'].strftime(fmt),
+        'yoy_start':     windows['yoy_start'].strftime(fmt),
+        'yoy_end':       windows['yoy_end'].strftime(fmt),
+    }
+    if windows['prev_period_available']:
+        resolved_dates['prev_start'] = windows['prev_start'].strftime(fmt)
+        resolved_dates['prev_end']   = windows['prev_end'].strftime(fmt)
+
     return {
-        'channel':        channel,
-        'platform':       platform,
-        'dimension':      dimension,
-        'data_key':       data_key,
-        'time_dimension': time_dimension,
-        'mom':            data_mom,
-        'yoy':            data_yoy,
-        'timeseries':     data_timeseries,
+        'channel':               channel,
+        'platform':              platform,
+        'dimension':             dimension,
+        'date_range':            date_range,
+        'date_range_label':      windows['label'],
+        'data_key':              data_key,
+        'time_dimension':        effective_time_dimension,
+        'default_time_dimension': windows['default_time_dimension'],
+        'prev_period_available': windows['prev_period_available'],
+        'resolved_dates':        resolved_dates,
+        'previous_period':       data_previous_period,
+        'previous_year':         data_previous_year,
+        'timeseries':            data_timeseries,
     }

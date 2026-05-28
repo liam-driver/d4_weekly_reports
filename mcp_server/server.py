@@ -312,8 +312,8 @@ def send_weekly_report_html(client_name: str, html_body: str) -> str:
 
 
 @mcp.tool()
-def fetch_trend_data(client_name: str, channel: str, dimension: str, channel_filter: str = "", platform: str = "", platform_filter: str = "", time_dimension: str = "Week number (ISO)", start_date_override: str = "") -> str:
-    """Fetch MoM, YoY, and timeseries data for a Trend Topic (scoped by channel and/or platform, broken down by dimension).
+def fetch_trend_data(client_name: str, channel: str, dimension: str, channel_filter: str = "", platform: str = "", platform_filter: str = "", time_dimension: str = "", date_range: str = "mtd") -> str:
+    """Fetch Previous Period, Previous Year, and timeseries data for a Trend Topic (scoped by channel and/or platform, broken down by dimension).
     Use this once per trend slide during the slide-by-slide workflow.
 
     client_name: the client name as it appears in config.json.
@@ -324,15 +324,19 @@ def fetch_trend_data(client_name: str, channel: str, dimension: str, channel_fil
     platform: the Ad Platform to scope the data to. Must match the exact value in the sheet: 'Google Ads', 'Microsoft Ads', 'Facebook Ads', 'TikTok Ads'. Leave empty to include all platforms.
     platform_filter: optional JSON string {"type": "include"|"exclude", "platforms": [...]} for
                      multi-platform or exclusion scoping. If omitted, data is scoped to platform only.
-    time_dimension: column to group the timeseries by. One of: 'Week number (ISO)' (default), 'Month', 'Year', 'Date'.
-                    Use 'Month' for YTD charts. The graph spec's dimensions.x must match this value.
-    start_date_override: ISO date string (YYYY-MM-DD) to extend the timeseries lookback beyond the default 90 days.
-                         Use this for YTD charts (e.g. '2026-01-01') or any chart needing a longer window.
+    time_dimension: column to group the timeseries by. One of: 'Week number (ISO)', 'Month', 'Year', 'Date'.
+                    Leave empty to use the recommended default for the selected date_range.
+                    The graph spec's dimensions.x must match the time_dimension returned in the response.
+    date_range: the date window for this slide. One of: 'previous_7_days', 'mtd' (default), 'ytd', 'last_90_days'.
+                Controls the current period, previous period, and previous year windows — all with 2-day GA4 lag applied.
+                'ytd' omits the previous period comparison.
 
     Persists the result to dimension_data[data_key] in the cached monthly JSON so the graph renderer
     can access it at PPTX build time.
 
-    Returns a JSON envelope: {channel, platform, dimension, data_key, time_dimension, mom, yoy, timeseries}."""
+    Returns a JSON envelope: {channel, platform, dimension, date_range, date_range_label, data_key,
+    time_dimension, default_time_dimension, prev_period_available, resolved_dates,
+    previous_period, previous_year, timeseries}."""
     _validate_client_name(client_name)
     parsed_channel_filter = None
     if channel_filter and channel_filter.strip():
@@ -344,7 +348,7 @@ def fetch_trend_data(client_name: str, channel: str, dimension: str, channel_fil
     result = _fetch(
         client_name, channel, dimension,
         parsed_channel_filter, platform or None, parsed_platform_filter,
-        time_dimension, start_date_override or None
+        time_dimension or None, date_range
     )
     return json.dumps(result, ensure_ascii=False)
 

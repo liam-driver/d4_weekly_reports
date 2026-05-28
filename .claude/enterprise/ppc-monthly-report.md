@@ -56,7 +56,18 @@ Work through each trend slide one at a time. Do not move to the next slide until
 
 The user selects or proposes a trend topic — any channel, dimension, or combination worth exploring (e.g. "Paid Search", "Paid Search by Campaign", "Paid Social by Asset", "all channels by platform"). There is no distinction between channel-only and dimension-breakdown topics — all topics are resolved via `fetch_trend_data`.
 
-**2b. Fetch slide data**
+**2b. Agree the date range**
+
+Confirm the date range for this slide. Default is **MTD** — proceed with MTD unless the user specifies otherwise. Present the options only if the user hasn't already indicated a preference:
+
+| Option | `date_range` value | Current period (today = 2-day lag) | Previous Period | Previous Year |
+|---|---|---|---|---|
+| Month-to-Date *(default)* | `mtd` | 1st of month → today−2 | Same day-count, prev month | Same range, −1 year |
+| Previous 7 Days | `previous_7_days` | today−8 → today−2 | 7 days before that | Same 7 days, −1 year |
+| Last 90 Days | `last_90_days` | today−91 → today−2 | 90 days before that | Same 90 days, −1 year |
+| Year-to-Date | `ytd` | 1 Jan → today−2 | *(none)* | Same range, −1 year |
+
+**2c. Fetch slide data**
 
 Call `fetch_trend_data` with the agreed topic. Pass:
 - `client_name`
@@ -65,18 +76,20 @@ Call `fetch_trend_data` with the agreed topic. Pass:
 - `channel_filter` (optional) — JSON string `{"type": "include"|"exclude", "channels": [...]}` for multi-channel or exclusion scoping. If omitted, data is scoped to `channel` only.
 - `platform` (optional) — the Ad Platform to scope to. Must match the exact value in the sheet: `Google Ads`, `Microsoft Ads`, `Facebook Ads`, `TikTok Ads`. Leave empty for all platforms.
 - `platform_filter` (optional) — JSON string `{"type": "include"|"exclude", "platforms": [...]}` for multi-platform or exclusion scoping.
-- `time_dimension` (optional, default `Week number (ISO)`) — column to group the timeseries by. One of: `Week number (ISO)`, `Month`, `Year`, `Date`. Use `Month` for YTD charts. **The graph spec's `dimensions.x` must match this value.**
-- `start_date_override` (optional) — ISO date string (`YYYY-MM-DD`) to extend the timeseries lookback beyond the default 90 days. Use for YTD charts (e.g. `2026-01-01`) or any chart needing a longer window.
+- `date_range` — one of `mtd` (default), `previous_7_days`, `last_90_days`, `ytd`.
+- `time_dimension` (optional) — column to group the timeseries by. One of: `Week number (ISO)`, `Month`, `Year`, `Date`. **Leave empty to use the recommended default for the selected date_range** (returned as `default_time_dimension` in the response). Override only if the user requests a different granularity. **The graph spec's `dimensions.x` must match the `time_dimension` value in the response.**
 
 Use `suggested_filters` from `dimension_config.json` as a starting point for which channel/platform scoping makes sense for the chosen dimension — but the user can add, remove, or replace any filter. Filter values must exactly match values in the data (no reformatting). Omit `channel` and `platform` entirely for channel-only slides with no breakdown.
 
+The response includes `resolved_dates` (the exact date strings used), `date_range_label`, `prev_period_available` (false for YTD), and `default_time_dimension`. Show the resolved dates to the user after fetching so they can confirm the window.
+
 The returned `data_key` is the canonical key for this slide's data — use it verbatim as `data_source` in the graph spec. This is **mandatory for every trend slide, no exceptions**. The renderer will error if `data_source` is absent. Report a brief progress update while fetching.
 
-**2c. Confirm the template**
+**2d. Confirm the template**
 
 Based on the fetched data, propose a slide template — the layout type that best fits the data (e.g. chart + commentary, commentary only). State your reasoning briefly. Wait for the user to confirm or redirect before proceeding.
 
-**2d. Render the slide**
+**2e. Render the slide**
 
 Once the template is confirmed, render the full slide in the **Slide Preview Format** section below — title, summary, bullets, and graph spec. Follow all Commentary Rules when generating content.
 
@@ -88,11 +101,11 @@ The tool returns the chart as an inline image — display it directly below the 
 
 If the tool returns an error, surface it verbatim and do not offer confirmation — fix the spec first.
 
-**2e. Iterate**
+**2f. Iterate**
 
 Respond to user feedback by re-rendering the slide. On every iteration, always re-call `preview_graph` — do not attempt to determine whether the spec changed.
 
-**2f. Confirm and continue**
+**2g. Confirm and continue**
 
 Slide is locked in. Ask the user if they want to add another trend topic or move to the confirmation gate.
 
@@ -123,7 +136,9 @@ Once the user confirms:
 
 You are a senior performance marketing manager writing monthly client-facing slide content. Commentary should be critical but productive — not scathing, but direct and human. Write in British English.
 
-Use both `mom` and `yoy` when generating commentary — do not rely on one comparison window alone. State clearly in each point which comparison you are using (e.g. 'vs. the previous month' or 'vs. the same month last year').
+For **overview slides**: use both `mom` and `yoy` data — do not rely on one comparison window alone. State clearly which comparison you are using (e.g. 'vs. the previous month' or 'vs. the same month last year').
+
+For **trend slides**: use `previous_period` and `previous_year` from the `fetch_trend_data` response. If `prev_period_available` is false (YTD), use `previous_year` only. Frame comparisons using the `date_range_label` (e.g. 'vs. the previous 7 days', 'vs. the same period last year'). Do not use 'month-over-month' or 'MoM' — use 'Previous Period' and 'Previous Year' as the comparison labels.
 
 ### Channel Classification Rules
 
@@ -327,7 +342,7 @@ All graph specs must conform exactly to this schema. The pipeline will fail at r
 
 The correct value depends on `style`:
 
-- **`style: trend`** — use a time column: `Week number (ISO)`, `Date`, `Month`, `Year`. Use `Week number (ISO)` for 90-day paid data. Use `Month` with `time_dimension='Month'` and `start_date_override` for YTD charts.
+- **`style: trend`** — use a time column: `Week number (ISO)`, `Date`, `Month`, `Year`. The correct value is the `time_dimension` returned in the `fetch_trend_data` response — always use that value, do not guess. Default pairings: `previous_7_days` → `Date`; `mtd` → `Date`; `last_90_days` → `Week number (ISO)`; `ytd` → `Month`.
 - **`style: comparison` or `style: distribution`** — use the dimension column name: `Campaign`, `Ad Platform`, `Ad Channel`, `Campaign Group`. The renderer resolves the category column from `data_source` and ignores any time dimension that is absent from the data.
 
 ### Valid dimensions.group_by
@@ -354,7 +369,7 @@ For **comparison/distribution** charts: `group_by` is not needed — `dimensions
 - **`pie`**: uses only the first metric; best for showing distribution across channels at a point in time.
 - **`scatter`**: exactly 2 metrics — first on the x-axis, second on the y-axis.
 - Every graph must have a `filters` value — never `null`. At minimum, filter to the relevant ad channel.
-- Every trend slide **must** set `data_source` to the `data_key` returned by `fetch_trend_data` exactly. The key is the dimension column name followed by `filterCol=filterVal` pairs sorted alphabetically, joined by `::`. Examples: `"Campaign::Ad Channel=Paid Search::Ad Platform=Google"`, `"Campaign::Ad Channel=Paid Search"`, `"Ad Platform"`, `"Ad Channel"`. This tells the renderer to read from `dimension_data` in the cached JSON. There are no exceptions — the renderer will raise an error if `data_source` is missing.
+- Every trend slide **must** set `data_source` to the `data_key` returned by `fetch_trend_data` exactly. The key is the dimension column name, followed by `filterCol=filterVal` pairs sorted alphabetically, followed by `date_range=<value>`, all joined by `::`. Examples: `"Campaign::Ad Channel=Paid Search::date_range=mtd"`, `"Campaign::Ad Channel=Paid Search::Ad Platform=Google Ads::date_range=ytd"`, `"Ad Platform::date_range=last_90_days"`. Always copy the `data_key` from the response verbatim — never construct it manually. This tells the renderer to read from `dimension_data` in the cached JSON. There are no exceptions — the renderer will raise an error if `data_source` is missing.
 - `filters` must be a JSON-serialised string: e.g. `"{\"Ad Channel\": \"Paid Search\"}"`. Filter keys must be a valid dimension (e.g. `Ad Channel`, `Ad Platform`). Filter values must exactly match the values that appear in the data — do not snake_case, lowercase, or reformat them.
 - `Website` is a valid dimension filter value — do not include it as a metric.
 
@@ -393,8 +408,8 @@ Generate a JSON object exactly matching this structure before calling `generate_
         },
         "metrics": ["string"],
         "date_range": {
-          "start": "string — dd/mm/yyyy, covering the full 90-day window",
-          "end": "string — dd/mm/yyyy"
+          "start": "string — dd/mm/yyyy, use resolved_dates.current_start from the fetch_trend_data response",
+          "end": "string — dd/mm/yyyy, use resolved_dates.current_end from the fetch_trend_data response"
         },
         "filters": "string — JSON-serialised filter object e.g. \"{\\\"Ad Channel\\\": \\\"Paid Search\\\"}\"",
         "title": "string — chart title",
