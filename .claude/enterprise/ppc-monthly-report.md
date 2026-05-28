@@ -64,6 +64,7 @@ Confirm the date range for this slide. Default is **MTD** — proceed with MTD u
 |---|---|---|---|---|
 | Month-to-Date *(default)* | `mtd` | 1st of month → today−2 | Same day-count, prev month | Same range, −1 year |
 | Previous 7 Days | `previous_7_days` | today−8 → today−2 | 7 days before that | Same 7 days, −1 year |
+| Previous Month | `previous_month` | 1st → last day of last month | Month before that | Same month, −1 year |
 | Last 90 Days | `last_90_days` | today−91 → today−2 | 90 days before that | Same 90 days, −1 year |
 | Year-to-Date | `ytd` | 1 Jan → today−2 | *(none)* | Same range, −1 year |
 

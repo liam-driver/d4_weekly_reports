@@ -6,11 +6,12 @@ from core.safe_div import safe_div
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-_VALID_DATE_RANGES = ('previous_7_days', 'mtd', 'ytd', 'last_90_days')
+_VALID_DATE_RANGES = ('previous_7_days', 'mtd', 'previous_month', 'ytd', 'last_90_days')
 
 _DATE_RANGE_LABELS = {
     'previous_7_days': 'Previous 7 Days',
     'mtd':             'Month-to-Date',
+    'previous_month':  'Previous Month',
     'ytd':             'Year-to-Date',
     'last_90_days':    'Last 90 Days',
 }
@@ -18,6 +19,7 @@ _DATE_RANGE_LABELS = {
 _DEFAULT_TIME_DIMENSION = {
     'previous_7_days': 'Date',
     'mtd':             'Date',
+    'previous_month':  'Week number (ISO)',
     'ytd':             'Month',
     'last_90_days':    'Week number (ISO)',
 }
@@ -46,6 +48,15 @@ def _resolve_date_windows(date_range: str) -> dict:
         current_end   = effective_today
         prev_start    = (current_start - pd.DateOffset(months=1)).normalize()
         prev_end      = prev_start + pd.DateOffset(days=(current_end - current_start).days)
+        yoy_start     = (current_start - pd.DateOffset(years=1)).normalize()
+        yoy_end       = (current_end   - pd.DateOffset(years=1)).normalize()
+
+    elif date_range == 'previous_month':
+        first_of_this_month = today.replace(day=1)
+        current_start = (first_of_this_month - pd.DateOffset(months=1)).normalize()
+        current_end   = (first_of_this_month - pd.DateOffset(days=1)).normalize()
+        prev_start    = (current_start - pd.DateOffset(months=1)).normalize()
+        prev_end      = (current_start - pd.DateOffset(days=1)).normalize()
         yoy_start     = (current_start - pd.DateOffset(years=1)).normalize()
         yoy_end       = (current_end   - pd.DateOffset(years=1)).normalize()
 

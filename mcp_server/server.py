@@ -327,7 +327,7 @@ def fetch_trend_data(client_name: str, channel: str, dimension: str, channel_fil
     time_dimension: column to group the timeseries by. One of: 'Week number (ISO)', 'Month', 'Year', 'Date'.
                     Leave empty to use the recommended default for the selected date_range.
                     The graph spec's dimensions.x must match the time_dimension returned in the response.
-    date_range: the date window for this slide. One of: 'previous_7_days', 'mtd' (default), 'ytd', 'last_90_days'.
+    date_range: the date window for this slide. One of: 'previous_7_days', 'mtd' (default), 'previous_month', 'ytd', 'last_90_days'.
                 Controls the current period, previous period, and previous year windows — all with 2-day GA4 lag applied.
                 'ytd' omits the previous period comparison.
 
