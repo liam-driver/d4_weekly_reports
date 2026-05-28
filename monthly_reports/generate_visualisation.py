@@ -154,6 +154,30 @@ def _resolve_x_col(spec, df, metrics):
     return x_col
 
 
+_X_COL_LABELS = {
+    'Week number (ISO)': 'Week',
+    'Month': 'Month',
+    'Year': 'Year',
+    'Date': 'Date',
+}
+
+
+def _format_x_labels(values, x_col):
+    """Return display-ready tick labels for a given x-axis dimension."""
+    if x_col == 'Week number (ISO)':
+        return [f'Wk {v}' for v in values]
+    if x_col == 'Month':
+        def _fmt_month(v):
+            try:
+                return pd.Period(str(v), 'M').strftime('%b %Y')
+            except Exception:
+                return str(v)
+        return [_fmt_month(v) for v in values]
+    if x_col == 'Date':
+        return [v.strftime('%b %d') if hasattr(v, 'strftime') else str(v) for v in values]
+    return [str(v) for v in values]
+
+
 def _apply_monthly_filters(df, filters):
     """Filter a monthly df; uses partial (contains) matching so 'Paid Social'
     catches both 'Paid Social Static' and 'Paid Social Video'."""
@@ -220,7 +244,7 @@ def render_line_chart(graph, client):
                             color=colour_cycle[i % len(colour_cycle)])
         if x_col != 'Date':
             ax.set_xticks(range(len(all_x_vals)))
-            ax.set_xticklabels([str(v) for v in all_x_vals], rotation=45, ha='right')
+            ax.set_xticklabels(_format_x_labels(all_x_vals, x_col), rotation=45, ha='right')
     else:
         # Single-series: aggregate all rows per x_col value
         df = df.groupby(x_col, as_index=False)[metrics].sum()
@@ -233,11 +257,11 @@ def render_line_chart(graph, client):
             target_ax.fill_between(x_pos, df[metric], alpha=0.1, color=colour)
         if x_col != 'Date':
             ax.set_xticks(list(x_pos))
-            ax.set_xticklabels(df[x_col], rotation=45, ha='right')
+            ax.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col), rotation=45, ha='right')
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
     ax.set_title(title, fontsize=14, fontweight='bold', pad=12, color=BRAND['quaternary'])
-    ax.set_xlabel(x_col, fontsize=11)
+    ax.set_xlabel(_X_COL_LABELS.get(x_col, x_col), fontsize=11)
 
     if not use_group_by and ax2 is not None:
         ax.set_ylabel(metrics[0], fontsize=11, color=BRAND['quaternary'])
@@ -324,7 +348,7 @@ def render_bar_chart(graph, client):
             ax.bar([pos + offset for pos in x], heights, width=bar_width,
                    label=str(group_val), color=colour_cycle[i % len(colour_cycle)], alpha=0.9)
         ax.set_xticks(list(x))
-        ax.set_xticklabels([str(v) for v in x_vals], rotation=45, ha='right')
+        ax.set_xticklabels(_format_x_labels(x_vals, x_col), rotation=45, ha='right')
     else:
         df = df.groupby(x_col, as_index=False)[metrics].sum()
         num_metrics = len(metrics)
@@ -336,14 +360,11 @@ def render_bar_chart(graph, client):
             ax.bar([pos + offset for pos in x], df[metric], width=bar_width,
                    label=metric, color=colour, alpha=0.9)
         ax.set_xticks(list(x))
-        ax.set_xticklabels(
-            [d.strftime("%b %d") if hasattr(d, 'strftime') else str(d) for d in df[x_col]],
-            rotation=45, ha='right'
-        )
+        ax.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col), rotation=45, ha='right')
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
     ax.set_title(title, fontsize=14, fontweight='bold', pad=12, color=BRAND['quaternary'])
-    ax.set_xlabel(x_col, fontsize=11)
+    ax.set_xlabel(_X_COL_LABELS.get(x_col, x_col), fontsize=11)
     ax.set_ylabel('Value', fontsize=11)
     if metrics and all(m in PCT_METRICS for m in metrics):
         ax.yaxis.set_major_formatter(_PCT_FMT)
@@ -404,7 +425,7 @@ def render_stacked_bar_chart(graph, client):
                    color=colour_cycle[i % len(colour_cycle)], alpha=0.9)
             bottoms = [b + h for b, h in zip(bottoms, heights)]
         ax.set_xticks(list(x))
-        ax.set_xticklabels([str(v) for v in x_vals], rotation=45, ha='right')
+        ax.set_xticklabels(_format_x_labels(x_vals, x_col), rotation=45, ha='right')
     else:
         # Stack per metric over x_col (existing behaviour)
         df = df.groupby(x_col, as_index=False)[metrics].sum()
@@ -416,14 +437,11 @@ def render_stacked_bar_chart(graph, client):
                    color=colour, alpha=0.9)
             bottoms = [b + v for b, v in zip(bottoms, df[metric])]
         ax.set_xticks(list(x))
-        ax.set_xticklabels(
-            [d.strftime("%b %d") if hasattr(d, 'strftime') else str(d) for d in df[x_col]],
-            rotation=45, ha='right'
-        )
+        ax.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col), rotation=45, ha='right')
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
     ax.set_title(title, fontsize=14, fontweight='bold', pad=12, color=BRAND['quaternary'])
-    ax.set_xlabel(x_col, fontsize=11)
+    ax.set_xlabel(_X_COL_LABELS.get(x_col, x_col), fontsize=11)
     ax.set_ylabel('Value', fontsize=11)
     if metrics and all(m in PCT_METRICS for m in metrics):
         ax.yaxis.set_major_formatter(_PCT_FMT)
@@ -554,7 +572,7 @@ def render_line_bar_combo_chart(graph, client):
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
     ax1.set_title(title, fontsize=14, fontweight="bold", pad=12, color=BRAND["quaternary"])
-    ax1.set_xlabel(x_col.capitalize(), fontsize=11)
+    ax1.set_xlabel(_X_COL_LABELS.get(x_col, x_col), fontsize=11)
     ax1.set_ylabel(bar_metric, fontsize=11, color=BRAND["quaternary"])
     ax2.set_ylabel(line_metric, fontsize=11, color=BRAND["quaternary"])
 
@@ -564,11 +582,7 @@ def render_line_bar_combo_chart(graph, client):
         ax2.yaxis.set_major_formatter(_PCT_FMT)
 
     ax1.set_xticks(list(x))
-    ax1.set_xticklabels(
-        [d.strftime("%b %d") if hasattr(d, 'strftime') else str(d) for d in df[x_col]],
-        rotation=45,
-        ha="right"
-    )
+    ax1.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col), rotation=45, ha="right")
 
     ax1.grid(True, alpha=0.2, axis="y")
 
