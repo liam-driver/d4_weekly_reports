@@ -124,17 +124,19 @@ def build_comparison_df(client, data_source, comparison_type):
 def _build_df_for_spec(client, spec):
     """Return the correctly sourced and filtered DataFrame for a graph spec."""
     data_source = spec.get('data_source')
+    if not data_source:
+        raise ValueError(
+            "Graph spec is missing 'data_source'. "
+            "Call fetch_trend_data for this slide and set data_source to the returned data_key."
+        )
     style = spec.get('style', 'trend')
-    if data_source:
-        if style == 'comparison':
-            comparison = spec.get('comparison', 'yoy')
-            df = build_comparison_df(client, data_source, comparison)
-        else:
-            x_dim = spec.get('dimensions', {}).get('x', '')
-            ct = 'timeseries' if x_dim in TIME_DIMENSIONS else 'mom'
-            df = build_dimension_df(client, data_source, ct)
+    if style == 'comparison':
+        comparison = spec.get('comparison', 'yoy')
+        df = build_comparison_df(client, data_source, comparison)
     else:
-        df = build_monthly_df(client)
+        x_dim = spec.get('dimensions', {}).get('x', '')
+        ct = 'timeseries' if x_dim in TIME_DIMENSIONS else 'mom'
+        df = build_dimension_df(client, data_source, ct)
     return _apply_monthly_filters(df, spec.get('filters', '{}'))
 
 
@@ -786,12 +788,13 @@ def render_comparison_line_chart(graph, client):
     data_source = graph.get("data_source")
 
     # ── 2. CONFIGURE THE DATAFRAME ───────────────────────────────────
-    if data_source:
-        df = build_dimension_df(client, data_source, 'timeseries')
-        time_col = client.get('dimension_data', {}).get(data_source, {}).get('time_dimension', 'Week number (ISO)')
-    else:
-        df = build_monthly_df(client)
-        time_col = 'Week number (ISO)'
+    if not data_source:
+        raise ValueError(
+            "Graph spec is missing 'data_source'. "
+            "Call fetch_trend_data for this slide and set data_source to the returned data_key."
+        )
+    df = build_dimension_df(client, data_source, 'timeseries')
+    time_col = client.get('dimension_data', {}).get(data_source, {}).get('time_dimension', 'Week number (ISO)')
 
     df = _apply_monthly_filters(df, graph.get('filters', '{}'))
     metrics = [m for m in metrics if m in df.columns]

@@ -54,9 +54,7 @@ Work through each trend slide one at a time. Do not move to the next slide until
 
 **2a. Agree the topic**
 
-The user selects or proposes a trend topic. A topic is either:
-- A channel (e.g. "Paid Search")
-- A channel + dimension breakdown (e.g. "Paid Search by Campaign", "Paid Social by Asset")
+The user selects or proposes a trend topic — any channel, dimension, or combination worth exploring (e.g. "Paid Search", "Paid Search by Campaign", "Paid Social by Asset", "all channels by platform"). There is no distinction between channel-only and dimension-breakdown topics — all topics are resolved via `fetch_trend_data`.
 
 **2b. Fetch slide data**
 
@@ -72,7 +70,7 @@ Call `fetch_trend_data` with the agreed topic. Pass:
 
 Use `suggested_filters` from `dimension_config.json` as a starting point for which channel/platform scoping makes sense for the chosen dimension — but the user can add, remove, or replace any filter. Filter values must exactly match values in the data (no reformatting). Omit `channel` and `platform` entirely for channel-only slides with no breakdown.
 
-The returned `data_key` is the canonical key for this slide's dimension data — use it verbatim as `data_source` in the graph spec. This returns MoM, YoY, and timeseries data scoped to that topic. Report a brief progress update while fetching.
+The returned `data_key` is the canonical key for this slide's data — use it verbatim as `data_source` in the graph spec. This is **mandatory for every trend slide, no exceptions**. The renderer will error if `data_source` is absent. Report a brief progress update while fetching.
 
 **2c. Confirm the template**
 
@@ -155,7 +153,7 @@ Use both `mom` and `yoy` when generating commentary — do not rely on one compa
 - `yoy.paid_data`: PPC data comparing the reported month to the same month last year.
 - `yoy.llm_data`: Paid data broken down by ad platform, YoY.
 - `yoy.overall_data`: Site-wide GA4 data, YoY.
-- `timeseries`: Paid data broken down by ISO week number over the past 90 days. Use for trend slides — shows directional change and inflection points over time.
+- `timeseries`: Paid data broken down by ISO week number over the past 90 days. **Context only — do not use as a graph data source.** Use to form initial trend hypotheses in Phase 1c. All graph data comes from `fetch_trend_data`.
 - `mtd.paid_data`: PPC data for the current month to date (1st of month to today-2), compared to the same days last year.
 - `mtd.llm_data`: MTD paid data broken down by ad platform, YoY.
 - `mtd.overall_data`: Site-wide GA4 data for the same MTD window, YoY.
@@ -189,7 +187,7 @@ Apply at all times when selecting evidence and framing points:
 
 ### Trend Selection Rules
 
-Identify meaningful trends from `timeseries`. One trend = one slide.
+Identify meaningful trend hypotheses from `mom`, `yoy`, and `timeseries` (context only). One trend = one slide. All graph data is fetched via `fetch_trend_data` — never from `timeseries` directly.
 
 - Focus on the most significant directional changes in Tier 1/2 metrics across channels.
 - Thresholds: only surface a trend if at least one Tier 1/2 metric shows ≥10% relative change, the channel represents ≥20% of total cost, or a clear multi-metric pattern exists.
@@ -356,7 +354,7 @@ For **comparison/distribution** charts: `group_by` is not needed — `dimensions
 - **`pie`**: uses only the first metric; best for showing distribution across channels at a point in time.
 - **`scatter`**: exactly 2 metrics — first on the x-axis, second on the y-axis.
 - Every graph must have a `filters` value — never `null`. At minimum, filter to the relevant ad channel.
-- For dimension cut trend slides, set `data_source` to the `data_key` returned by `fetch_trend_data` exactly. The key is the dimension column name followed by `filterCol=filterVal` pairs sorted alphabetically, joined by `::`. Examples: `"Campaign::Ad Channel=Paid Search::Ad Platform=Google"`, `"Campaign::Ad Channel=Paid Search"`, `"Ad Platform"`. This tells the renderer to read from `dimension_data` in the cached JSON. Omit `data_source` for channel-only trend slides.
+- Every trend slide **must** set `data_source` to the `data_key` returned by `fetch_trend_data` exactly. The key is the dimension column name followed by `filterCol=filterVal` pairs sorted alphabetically, joined by `::`. Examples: `"Campaign::Ad Channel=Paid Search::Ad Platform=Google"`, `"Campaign::Ad Channel=Paid Search"`, `"Ad Platform"`, `"Ad Channel"`. This tells the renderer to read from `dimension_data` in the cached JSON. There are no exceptions — the renderer will raise an error if `data_source` is missing.
 - `filters` must be a JSON-serialised string: e.g. `"{\"Ad Channel\": \"Paid Search\"}"`. Filter keys must be a valid dimension (e.g. `Ad Channel`, `Ad Platform`). Filter values must exactly match the values that appear in the data — do not snake_case, lowercase, or reformat them.
 - `Website` is a valid dimension filter value — do not include it as a metric.
 
@@ -401,7 +399,7 @@ Generate a JSON object exactly matching this structure before calling `generate_
         "filters": "string — JSON-serialised filter object e.g. \"{\\\"Ad Channel\\\": \\\"Paid Search\\\"}\"",
         "title": "string — chart title",
         "style": "string — one of: trend, comparison, distribution",
-        "data_source": "string (optional) — key into dimension_data. Format: dimension column first, then filterCol=filterVal pairs sorted alphabetically, joined by ::. e.g. \"Campaign::Ad Channel=Paid Search::Ad Platform=Google\" or \"Campaign::Ad Channel=Paid Search\". Set only for dimension cut trend slides. Must exactly match the data_key returned by fetch_trend_data."
+        "data_source": "string — required on every trend graph. Key into dimension_data, must exactly match the data_key returned by fetch_trend_data. Format: dimension column first, then filterCol=filterVal pairs sorted alphabetically, joined by ::. e.g. \"Campaign::Ad Channel=Paid Search::Ad Platform=Google\", \"Campaign::Ad Channel=Paid Search\", \"Ad Channel\"."
       }
     }
   ],
