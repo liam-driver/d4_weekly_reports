@@ -158,7 +158,8 @@ def _add_kpi_boxes(slide, kpis, start_x=Inches(7.1), start_y=None,
 
     for i, (label, data) in enumerate(kpis):
         y = start_y + i * (box_h + gap)
-        shape = slide.shapes.add_shape(1, start_x, y, box_w, box_h)
+        shape = slide.shapes.add_shape(5, start_x, y, box_w, box_h)
+        shape.adjustments[0] = 0.08
         shape.fill.solid()
         shape.fill.fore_color.rgb = box_colours[i % len(box_colours)]
         shape.line.fill.background()
@@ -320,7 +321,8 @@ def slide_scorecard(prs, title, kpis):
 
     for i, (label, data) in enumerate(kpis):
         x = start_x + i * (box_w + gap)
-        shape = slide.shapes.add_shape(1, x, start_y, box_w, box_h)
+        shape = slide.shapes.add_shape(5, x, start_y, box_w, box_h)
+        shape.adjustments[0] = 0.08
         shape.fill.solid()
         shape.fill.fore_color.rgb = box_colours[i % len(box_colours)]
         shape.line.fill.background()
