@@ -3,6 +3,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import base64
+import glob as _glob
 import json
 import secrets
 import smtplib
@@ -408,6 +409,17 @@ def generate_monthly_pptx(client_name: str, slide_content: str) -> str:
     output_path = generate_ppt(client_name, slide_content=content)
     filename = os.path.basename(output_path)
     download_url = f"{ISSUER_URL}/files/{filename}"
+
+    # Clean up generated files older than 7 days to avoid unbounded storage growth.
+    slides_dir = os.path.join(PROJECT_ROOT, "slides")
+    cutoff = time.time() - 7 * 86400
+    for old_file in _glob.glob(os.path.join(slides_dir, f"{client_name}_monthly_*.pptx")):
+        if os.path.getmtime(old_file) < cutoff and os.path.abspath(old_file) != os.path.abspath(output_path):
+            try:
+                os.remove(old_file)
+            except OSError:
+                pass
+
     return json.dumps({"path": output_path, "download_url": download_url}, ensure_ascii=False)
 
 

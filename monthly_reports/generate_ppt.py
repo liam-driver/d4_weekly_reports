@@ -598,7 +598,8 @@ def generate_ppt(client_name, output_path=None, slide_content=None):
     prev_month = datetime.strptime(client['start_date_string'], "%d/%m/%Y").strftime("%B")
 
     if output_path is None:
-        output_path = os.path.join(PROJECT_ROOT, "slides", f"{client_name}_monthly.pptx")
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        output_path = os.path.join(PROJECT_ROOT, "slides", f"{client_name}_monthly_{timestamp}.pptx")
     template_path = os.path.join(PROJECT_ROOT, "slides", "template.pptx")
     shutil.copy(template_path, output_path)
     prs = Presentation(output_path)
