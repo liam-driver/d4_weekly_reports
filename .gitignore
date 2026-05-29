@@ -16,6 +16,7 @@
 !slides/
 !tests/
 !storage/
+!docs/
 
 # Allow contents
 !core/**
@@ -28,6 +29,7 @@
 !fonts/**
 !slides/template.pptx
 !tests/**
+!docs/**
 
 # Root-level files to keep
 !requirements.txt
