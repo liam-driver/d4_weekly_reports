@@ -169,17 +169,25 @@ class TestSlidePlanningGantt:
         slide = slide_planning_gantt(prs, 'Q2 Plan', self.TASKS)
         assert slide is not None
 
-    def test_slide_contains_image_not_table(self, prs):
+    def test_slide_uses_shapes_not_picture(self, prs):
         slide = slide_planning_gantt(prs, 'Q2 Plan', self.TASKS)
-        pictures = [s for s in slide.shapes if s.shape_type == 13]  # MSO_SHAPE_TYPE.PICTURE = 13
-        tables   = [s for s in slide.shapes if s.has_table]
-        assert len(pictures) >= 1
+        pictures    = [s for s in slide.shapes if s.shape_type == 13]  # PICTURE
+        tables      = [s for s in slide.shapes if s.has_table]
+        auto_shapes = [s for s in slide.shapes if s.shape_type == 1]   # AUTO_SHAPE
+        assert len(pictures) == 0
         assert len(tables) == 0
+        assert len(auto_shapes) >= 1
 
-    def test_gantt_image_file_is_created(self, prs):
-        import os
-        slide_planning_gantt(prs, 'Q2 Plan Test', self.TASKS)
-        assert os.path.exists('charts/Q2_Plan_Test_gantt.png')
+    def test_labels_combine_platform_and_name(self, prs):
+        slide = slide_planning_gantt(prs, 'Q2 Plan', self.TASKS)
+        all_text = ' '.join(
+            run.text
+            for shp in slide.shapes if shp.has_text_frame
+            for p in shp.text_frame.paragraphs
+            for run in p.runs
+        )
+        assert 'Google Ads: Task A' in all_text
+        assert 'Meta Ads: Task B' in all_text
 
 
 # ── slide_scorecard_commentary ────────────────────────────────────────────────

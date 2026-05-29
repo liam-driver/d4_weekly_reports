@@ -7,16 +7,15 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 import argparse
 import shutil
 import json
+from calendar import monthrange
 from datetime import datetime
+from lxml import etree
 from pptx import Presentation
 from pptx.util import Pt, Inches
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.oxml.ns import qn
 from PIL import Image
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from matplotlib.patches import Patch
 from core.generate_commentary import generate_monthly_slide_content, generate_mtd_slide_content
 from monthly_reports.generate_visualisation import render_graph, initialise_brand, BRAND
 
@@ -422,13 +421,9 @@ def slide_table_commentary(prs, title, headers, rows, bullets, status_col=None):
     return slide
 
 
-def _render_gantt_chart(tasks, title):
-    STATUS_HEX = {
-        "Complete":    BRAND["tertiary"],
-        "In Progress": BRAND["primary"],
-        "Scheduled":   "#D9D9D9",
-        "Blocked":     BRAND["secondary"],
-    }
+def slide_planning_gantt(prs, title, tasks):
+    if not tasks:
+        return None
 
     parsed = []
     for t in tasks:
@@ -439,71 +434,143 @@ def _render_gantt_chart(tasks, title):
             end   = datetime.strptime(end_str,   '%d/%m/%Y')
         except ValueError:
             continue
-        parsed.append({
-            'name':     t.get('name', ''),
-            'start':    start,
-            'end':      end,
-            'status':   t.get('status', 'Scheduled'),
-            'platform': t.get('platform', ''),
-        })
+        platform = t.get('platform', '')
+        name     = t.get('name', '')
+        label    = f"{platform}: {name}" if platform and name else platform or name
+        parsed.append({'label': label, 'start': start, 'end': end,
+                        'status': t.get('status', 'Scheduled')})
 
     if not parsed:
         return None
 
-    fig, ax = plt.subplots(figsize=(12, max(3.5, len(parsed) * 0.75 + 1.0)))
+    # Derive monthly columns from actual task date span
+    period_start    = min(t['start'] for t in parsed).replace(day=1)
+    last_task_end   = max(t['end']   for t in parsed)
+    last_month_start = last_task_end.replace(day=1)
 
-    for i, task in enumerate(reversed(parsed)):
-        start_n = mdates.date2num(task['start'])
-        end_n   = mdates.date2num(task['end'])
-        dur     = max(end_n - start_n, 1)
-        colour  = STATUS_HEX.get(task['status'], "#D9D9D9")
+    months = []
+    m = period_start
+    while m <= last_month_start:
+        months.append(m)
+        m = (m.replace(month=m.month + 1) if m.month < 12
+             else m.replace(year=m.year + 1, month=1))
 
-        ax.barh(i, dur, left=start_n, height=0.55,
-                color=colour, edgecolor='white', linewidth=1.5)
-        ax.text(start_n + dur / 2, i, task['status'],
-                ha='center', va='center', fontsize=8,
-                fontweight='bold', color=BRAND["quaternary"])
+    last_m     = months[-1]
+    period_end = last_m.replace(day=monthrange(last_m.year, last_m.month)[1])
+    total_days = (period_end - period_start).days + 1
 
-    ax.set_yticks(range(len(parsed)))
-    ax.set_yticklabels([t['name'] for t in reversed(parsed)], fontsize=9)
-    ax.yaxis.set_tick_params(length=0)
-
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
-    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-    plt.setp(ax.get_xticklabels(), rotation=30, ha='right', fontsize=9)
-
-    ax.set_title(title, fontsize=14, fontweight='bold', pad=12, color=BRAND["quaternary"])
-    ax.grid(True, alpha=0.2, axis='x')
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-
-    legend_handles = [
-        Patch(facecolor=c, label=s, edgecolor='white')
-        for s, c in STATUS_HEX.items()
-    ]
-    ax.legend(handles=legend_handles, loc='lower right', fontsize=8,
-              facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
-
-    plt.tight_layout()
-    charts_dir = os.path.join(PROJECT_ROOT, "charts")
-    os.makedirs(charts_dir, exist_ok=True)
-    path = os.path.join(charts_dir, f"{title.replace(' ', '_')}_gantt.png")
-    fig.savefig(path, bbox_inches='tight', dpi=150)
-    plt.close(fig)
-    return path
-
-
-def slide_planning_gantt(prs, title, tasks):
-    if not tasks:
-        return None
-
-    chart_path = _render_gantt_chart(tasks, title)
-    if not chart_path:
-        return None
+    # Layout constants (EMU)
+    SL = prs.slide_width
+    SH = prs.slide_height
+    LEFT         = Inches(0.4)
+    RIGHT        = Inches(0.4)
+    TITLE_BOTTOM = Inches(1.1)
+    BOTTOM       = Inches(0.3)
+    LABEL_W      = Inches(2.5)
+    CHART_LEFT   = LEFT + LABEL_W + Inches(0.1)
+    CHART_W      = SL - CHART_LEFT - RIGHT
+    HEADER_H     = Inches(0.35)
+    LEGEND_H     = Inches(0.35)
+    LEGEND_PAD   = Inches(0.12)
+    available    = SH - TITLE_BOTTOM - BOTTOM - HEADER_H - LEGEND_H - LEGEND_PAD
+    row_h        = max(Inches(0.3), min(Inches(0.5), available // len(parsed)))
+    ROWS_TOP     = TITLE_BOTTOM + HEADER_H
 
     slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_BLANK])
     _add_title_textbox(slide, title)
-    _add_chart_image(slide, chart_path, left=Inches(0.4), top=Inches(1.1), width=Inches(9.2))
+
+    def _rect(left, top, width, height, fill=None):
+        shp = slide.shapes.add_shape(
+            1, int(left), int(top), int(max(width, 1)), int(max(height, 1))
+        )
+        if fill:
+            shp.fill.solid()
+            shp.fill.fore_color.rgb = fill
+        else:
+            shp.fill.background()
+        sp_pr = shp._element.find(qn('p:spPr'))
+        if sp_pr is not None:
+            ln = sp_pr.find(qn('a:ln'))
+            if ln is None:
+                ln = etree.SubElement(sp_pr, qn('a:ln'))
+            else:
+                for child in list(ln):
+                    ln.remove(child)
+            etree.SubElement(ln, qn('a:noFill'))
+        return shp
+
+    def _label(shp, text, size=Pt(9), bold=False, color=C["dark"], align=PP_ALIGN.LEFT):
+        tf = shp.text_frame
+        tf.word_wrap        = True
+        tf.vertical_anchor  = MSO_ANCHOR.MIDDLE
+        tf.margin_left      = Inches(0.06)
+        tf.margin_right     = Inches(0.04)
+        tf.margin_top       = Inches(0.02)
+        tf.margin_bottom    = Inches(0.02)
+        p = tf.paragraphs[0]
+        p.alignment = align
+        run = p.add_run()
+        run.text           = text
+        run.font.name      = BRAND["font"]
+        run.font.size      = size
+        run.font.bold      = bold
+        run.font.color.rgb = color
+
+    # Month header cells
+    for i, month in enumerate(months):
+        offset    = (month - period_start).days
+        span      = ((months[i + 1] - month).days if i < len(months) - 1
+                     else (period_end - month).days + 1)
+        col_left  = CHART_LEFT + int(CHART_W * offset / total_days)
+        col_w     = int(CHART_W * span / total_days)
+        shp = _rect(col_left, TITLE_BOTTOM, col_w, HEADER_H, fill=C["dark"])
+        _label(shp, month.strftime('%B'), size=Pt(10), bold=True,
+               color=C["white"], align=PP_ALIGN.CENTER)
+
+    # Task rows
+    for i, task in enumerate(parsed):
+        row_top = ROWS_TOP + i * row_h
+        _rect(CHART_LEFT, row_top, CHART_W, row_h,
+              fill=C["light"] if i % 2 == 0 else C["white"])
+
+        label_shp = _rect(LEFT, row_top, LABEL_W, row_h, fill=C["dark"])
+        _label(label_shp, task['label'], size=Pt(8), color=C["white"])
+
+        s = max(task['start'], period_start)
+        e = min(task['end'],   period_end)
+        if s > e:
+            continue
+        pad   = row_h // 6
+        s_off = (s - period_start).days
+        e_off = (e - period_start).days + 1
+        bar_l = CHART_LEFT + int(CHART_W * s_off / total_days)
+        bar_w = max(int(CHART_W * (e_off - s_off) / total_days), Inches(0.05))
+        _rect(bar_l, row_top + pad, bar_w, row_h - 2 * pad,
+              fill=STATUS_COLOURS.get(task['status'], C["grey"]))
+
+    # Legend (centered below rows)
+    legend_top = ROWS_TOP + len(parsed) * row_h + LEGEND_PAD
+    swatch     = Inches(0.14)
+    text_w_l   = Inches(0.9)
+    spacing    = Inches(0.2)
+    item_w     = swatch + Inches(0.07) + text_w_l
+    items      = [('Complete',    C["teal"]),  ('In Progress', C["gold"]),
+                  ('Scheduled',   C["grey"]),  ('Blocked',     C["orange"])]
+    total_lw   = len(items) * item_w + (len(items) - 1) * spacing
+    lx0        = (SL - total_lw) // 2
+
+    for j, (lbl, col) in enumerate(items):
+        lx = lx0 + j * (item_w + spacing)
+        ly = legend_top + (LEGEND_H - swatch) // 2
+        _rect(lx, ly, swatch, swatch, fill=col)
+        tb  = slide.shapes.add_textbox(lx + swatch + Inches(0.07), legend_top, text_w_l, LEGEND_H)
+        tf  = tb.text_frame
+        run = tf.paragraphs[0].add_run()
+        run.text           = lbl
+        run.font.name      = BRAND["font"]
+        run.font.size      = Pt(8)
+        run.font.color.rgb = C["dark"]
+
     return slide
 
 
