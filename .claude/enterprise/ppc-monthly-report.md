@@ -37,7 +37,7 @@ If `slack_channel_id` is not available, skip and note no Slack context is availa
 
 Using the baseline data and Slack context, render the **Initial Preview** in chat using the **Initial Preview Format** section below. This contains:
 - **{Previous Month} Performance Overview** — fully populated with real scorecard data and commentary using `mom` and `yoy` data
-- **{Current Month} TD Performance Overview** — fully populated with real scorecard data and commentary using `mtd` data compared to the same days last year. Only included if `mtd.start_date` is present in the fetch response.
+- **{Current Month} Performance Overview** — fully populated with real scorecard data and commentary using `mtd` data compared to the same days last year. Only included if `mtd.start_date` is present in the fetch response.
 - **Top Level Trends** — draft suggestions only (not full slides), each a short hypothesis about a potential trend topic derived from the baseline timeseries and Slack signals
 - **Actions** — fully populated from the 90-day plan
 - **Gantt** — auto-generated label only
@@ -288,7 +288,7 @@ Render this after the baseline fetch and Slack context are loaded. The Trends se
 
 ---
 
-**Section: [Current Month] TD Performance Overview**
+**Section: [Current Month] Performance Overview**
 **MTD Period:** [mtd.start_date] – [mtd.end_date] vs same days last year
 
 **Month to Date View** *(Scorecard + Commentary)*
@@ -356,7 +356,7 @@ Render this once all trend slides are confirmed, before PPTX generation.
 **[Previous Month] Performance Overview**
 [overview.summary — one line]
 
-**[Current Month] TD Performance Overview** *(if present)*
+**[Current Month] Performance Overview** *(if present)*
 [mtd_overview.summary — one line]
 
 **Top Level Trends**

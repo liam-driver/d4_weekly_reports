@@ -271,12 +271,26 @@ def slide_commentary(prs, title, summary, bullets):
     return slide
 
 
-def slide_chart_commentary(prs, title, summary, bullets, chart_path, date_range=None):
+def _iso_to_dmy(iso_str):
+    try:
+        return datetime.strptime(iso_str[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        return iso_str
+
+
+def _fmt_date_label(start, end, comp_start=None, comp_end=None):
+    label = f"{start} - {end}"
+    if comp_start and comp_end:
+        label += f" vs {comp_start} - {comp_end}"
+    return label + " | Ad Platform & GA4"
+
+
+def slide_chart_commentary(prs, title, summary, bullets, chart_path, date_label=None):
     slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_TITLE_AND_BODY])
     slide.placeholders[0].text = title
     try:
-        if date_range:
-            slide.placeholders[2].text = f"{date_range['start']} to {date_range['end']}"
+        if date_label:
+            slide.placeholders[2].text = date_label
     except (KeyError, IndexError):
         pass
     try:
@@ -291,9 +305,14 @@ def slide_chart_commentary(prs, title, summary, bullets, chart_path, date_range=
     return slide
 
 
-def slide_scorecard_commentary(prs, title, summary, bullets, kpis):
+def slide_scorecard_commentary(prs, title, summary, bullets, kpis, date_label=None):
     slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_TITLE_AND_BODY])
     slide.placeholders[0].text = title
+    try:
+        if date_label:
+            slide.placeholders[2].text = date_label
+    except (KeyError, IndexError):
+        pass
     try:
         _set_text(slide.placeholders[4].text_frame, summary)
     except (KeyError, IndexError):
@@ -510,7 +529,6 @@ def generate_ppt(client_name, output_path=None, slide_content=None):
         json.dump(client['slide_content'], f, ensure_ascii=False, indent=2)
 
     prev_month = datetime.strptime(client['start_date_string'], "%d/%m/%Y").strftime("%B")
-    current_month = prev_month  # kept for the Actions slide label below
 
     if output_path is None:
         output_path = os.path.join(PROJECT_ROOT, "slides", f"{client_name}_monthly.pptx")
@@ -532,46 +550,72 @@ def generate_ppt(client_name, output_path=None, slide_content=None):
     slide_section_separator(prs, f'{prev_month} Performance Overview', variant='gold')
     slide_scorecard_commentary(
         prs,
-        title=   'Top Level View',
-        summary= sc['overview']['summary'],
-        bullets= sc['overview']['bullets'],
-        kpis=    kpis,
+        title=      f'{prev_month} Performance',
+        summary=    sc['overview']['summary'],
+        bullets=    sc['overview']['bullets'],
+        kpis=       kpis,
+        date_label= _fmt_date_label(
+            client['start_date_string'],
+            client['end_date_string'],
+            _iso_to_dmy(client.get('compare_start_mom', '')),
+            _iso_to_dmy(client.get('compare_end_mom', '')),
+        ),
     )
 
     mtd_start_str = client.get('mtd_start_date_string')
     if mtd_start_str and sc.get('mtd_overview'):
         mtd_month = datetime.strptime(mtd_start_str, "%d/%m/%Y").strftime("%B")
         mtd_kpis = _build_kpis_for(client, 'paid_data_mtd')
-        slide_section_separator(prs, f'{mtd_month} TD Performance Overview', variant='gold')
+        slide_section_separator(prs, f'{mtd_month} Performance Overview', variant='gold')
         slide_scorecard_commentary(
             prs,
-            title=   'Month to Date View',
-            summary= sc['mtd_overview']['summary'],
-            bullets= sc['mtd_overview']['bullets'],
-            kpis=    mtd_kpis,
+            title=      f'{mtd_month} Performance',
+            summary=    sc['mtd_overview']['summary'],
+            bullets=    sc['mtd_overview']['bullets'],
+            kpis=       mtd_kpis,
+            date_label= _fmt_date_label(
+                client['mtd_start_date_string'],
+                client['mtd_end_date_string'],
+                _iso_to_dmy(client.get('compare_start_mtd', '')),
+                _iso_to_dmy(client.get('compare_end_mtd', '')),
+            ),
         )
 
     slide_section_separator(prs, 'Top Level Trends', variant='gold')
     for trend in sc['trends']:
         chart_path = render_graph(client, trend['graph'])
         if chart_path:
+            _g = trend['graph']
+            _rd = client.get('dimension_data', {}).get(_g.get('data_source', ''), {}).get('resolved_dates', {})
+            _comp = _g.get('comparison')
+            if _comp == 'mom':
+                _comp_start, _comp_end = _rd.get('prev_start'), _rd.get('prev_end')
+            elif _comp == 'yoy':
+                _comp_start, _comp_end = _rd.get('yoy_start'), _rd.get('yoy_end')
+            else:
+                _comp_start, _comp_end = None, None
             slide_chart_commentary(
                 prs,
                 title=      trend['title'],
                 summary=    trend['summary'],
                 bullets=    trend['bullets'],
                 chart_path= chart_path,
-                date_range= trend['graph']['date_range'],
+                date_label= _fmt_date_label(
+                    _rd.get('current_start', _g['date_range']['start']),
+                    _rd.get('current_end',   _g['date_range']['end']),
+                    _comp_start,
+                    _comp_end,
+                ),
             )
         else:
             slide_commentary(prs, trend['title'], trend['summary'], trend['bullets'])
 
-    slide_section_separator(prs, f'{current_month} Actions', variant='gold')
+    slide_section_separator(prs, 'Plan Overview', variant='gold')
     action_bullets = [
         f"{action['task']}: {action['summary']} - {action['status']}"
         for action in sc['actions']
     ]
-    slide_commentary(prs, f'{current_month} Actions', '', action_bullets)
+    slide_commentary(prs, 'Plan Overview', '', action_bullets)
 
     plan_json = client.get('plan_json')
     if plan_json:

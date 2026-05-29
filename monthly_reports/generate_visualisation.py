@@ -14,6 +14,17 @@ PCT_METRICS = {
 }
 _PCT_FMT = mticker.FuncFormatter(lambda x, _: f"{x:.2f}%")
 
+MONETARY_METRICS = {"Cost", "CPC", "CPA", "AOV", "Revenue", "Transaction Revenue"}
+
+def _gbp_fmt_fn(x, _):
+    if x >= 1000:
+        return f'£{x:,.0f}'
+    if x >= 10:
+        return f'£{x:.0f}'
+    return f'£{x:.2f}'
+
+_GBP_FMT = mticker.FuncFormatter(_gbp_fmt_fn)
+
 TIME_DIMENSIONS = {'Week number (ISO)', 'Month', 'Year', 'Date'}
 
 
@@ -58,6 +69,32 @@ def _parse_val(raw):
         return 0.0
 
 
+_NULL_STRINGS = {'', 'None', 'nan', 'NaN', 'null', '(not set)'}
+_TOTAL_STRINGS = {'total', 'totals', 'grand total'}
+
+
+def _legend_above(ax, handles, labels):
+    """Place legend horizontally above the axes area, below the title."""
+    ax.legend(
+        handles, labels,
+        loc='lower center',
+        bbox_to_anchor=(0.5, 1.0),
+        ncol=max(1, len(labels)),
+        borderaxespad=0.3,
+        facecolor=BRAND['background'],
+        edgecolor=BRAND['quaternary'],
+        fontsize=9,
+    )
+
+def _drop_null_paid_dims(df, dimension_col=None):
+    for col in ('Ad Channel', 'Ad Platform'):
+        if col in df.columns:
+            df = df[df[col].notna() & ~df[col].astype(str).str.strip().isin(_NULL_STRINGS)]
+    if dimension_col and dimension_col in df.columns:
+        df = df[~df[dimension_col].astype(str).str.strip().str.lower().isin(_TOTAL_STRINGS)]
+    return df
+
+
 def build_dimension_df(client, data_source, comparison_type):
     """
     Build a DataFrame from client['dimension_data'][data_source] for graph rendering.
@@ -92,7 +129,7 @@ def build_dimension_df(client, data_source, comparison_type):
             rows.append(row)
         df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[dimension_col])
 
-    return df
+    return _drop_null_paid_dims(df, dimension_col)
 
 
 def build_comparison_df(client, data_source, comparison_type):
@@ -118,7 +155,8 @@ def build_comparison_df(client, data_source, comparison_type):
                 curr_row[metric] = _parse_val(vals)
                 prev_row[metric] = 0.0
         rows.extend([curr_row, prev_row])
-    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=[dimension_col, 'Period'])
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[dimension_col, 'Period'])
+    return _drop_null_paid_dims(df, dimension_col)
 
 
 def _build_df_for_spec(client, spec):
@@ -267,8 +305,12 @@ def render_line_chart(graph, client):
 
     if metrics[0] in PCT_METRICS:
         ax.yaxis.set_major_formatter(_PCT_FMT)
+    elif metrics[0] in MONETARY_METRICS:
+        ax.yaxis.set_major_formatter(_GBP_FMT)
     if ax2 and len(metrics) > 1 and metrics[1] in PCT_METRICS:
         ax2.yaxis.set_major_formatter(_PCT_FMT)
+    elif ax2 and len(metrics) > 1 and metrics[1] in MONETARY_METRICS:
+        ax2.yaxis.set_major_formatter(_GBP_FMT)
 
     if x_col == 'Date':
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
@@ -278,10 +320,9 @@ def render_line_chart(graph, client):
     lines1, labels1 = ax.get_legend_handles_labels()
     if ax2 is not None:
         lines2, labels2 = ax2.get_legend_handles_labels()
-        ax.legend(lines1 + lines2, labels1 + labels2,
-                  facecolor=BRAND['background'], edgecolor=BRAND['quaternary'])
+        _legend_above(ax, lines1 + lines2, labels1 + labels2)
     else:
-        ax.legend(lines1, labels1, facecolor=BRAND['background'], edgecolor=BRAND['quaternary'])
+        _legend_above(ax, lines1, labels1)
 
     plt.tight_layout()
 
@@ -357,8 +398,10 @@ def render_bar_chart(graph, client):
     ax.set_ylabel('Value', fontsize=11)
     if metrics and all(m in PCT_METRICS for m in metrics):
         ax.yaxis.set_major_formatter(_PCT_FMT)
+    elif metrics and metrics[0] in MONETARY_METRICS:
+        ax.yaxis.set_major_formatter(_GBP_FMT)
     ax.grid(True, alpha=0.2, axis='y')
-    ax.legend(facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
+    _legend_above(ax, *ax.get_legend_handles_labels())
     plt.tight_layout()
 
     # ── 6. SAVE AND RETURN ───────────────────────────────────────────
@@ -434,8 +477,10 @@ def render_stacked_bar_chart(graph, client):
     ax.set_ylabel('Value', fontsize=11)
     if metrics and all(m in PCT_METRICS for m in metrics):
         ax.yaxis.set_major_formatter(_PCT_FMT)
+    elif metrics and metrics[0] in MONETARY_METRICS:
+        ax.yaxis.set_major_formatter(_GBP_FMT)
     ax.grid(True, alpha=0.2, axis='y')
-    ax.legend(facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
+    _legend_above(ax, *ax.get_legend_handles_labels())
     plt.tight_layout()
 
     # ── 6. SAVE AND RETURN ───────────────────────────────────────────
@@ -567,8 +612,12 @@ def render_line_bar_combo_chart(graph, client):
 
     if bar_metric in PCT_METRICS:
         ax1.yaxis.set_major_formatter(_PCT_FMT)
+    elif bar_metric in MONETARY_METRICS:
+        ax1.yaxis.set_major_formatter(_GBP_FMT)
     if line_metric in PCT_METRICS:
         ax2.yaxis.set_major_formatter(_PCT_FMT)
+    elif line_metric in MONETARY_METRICS:
+        ax2.yaxis.set_major_formatter(_GBP_FMT)
 
     ax1.set_xticks(list(x))
     ax1.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col), rotation=45, ha="right")
@@ -577,7 +626,7 @@ def render_line_bar_combo_chart(graph, client):
 
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
+    _legend_above(ax1, lines1 + lines2, labels1 + labels2)
 
     ax2.tick_params(axis="y", colors=BRAND["quaternary"])
 
@@ -642,8 +691,10 @@ def render_horizontal_bar_chart(graph, client):
     ax.set_yticklabels(df[x_col])
     if metrics and metrics[0] in PCT_METRICS:
         ax.xaxis.set_major_formatter(_PCT_FMT)
+    elif metrics and metrics[0] in MONETARY_METRICS:
+        ax.xaxis.set_major_formatter(_GBP_FMT)
     ax.grid(True, alpha=0.2, axis="x")
-    ax.legend(facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
+    _legend_above(ax, *ax.get_legend_handles_labels())
     plt.tight_layout()
 
     # ── 6. SAVE AND RETURN ───────────────────────────────────────────
@@ -704,8 +755,12 @@ def render_scatter_chart(graph, client):
     ax.set_ylabel(y_metric, fontsize=11)
     if x_metric in PCT_METRICS:
         ax.xaxis.set_major_formatter(_PCT_FMT)
+    elif x_metric in MONETARY_METRICS:
+        ax.xaxis.set_major_formatter(_GBP_FMT)
     if y_metric in PCT_METRICS:
         ax.yaxis.set_major_formatter(_PCT_FMT)
+    elif y_metric in MONETARY_METRICS:
+        ax.yaxis.set_major_formatter(_GBP_FMT)
     ax.grid(True, alpha=0.2)
     plt.tight_layout()
 
@@ -770,8 +825,10 @@ def render_comparison_bar_chart(graph, client):
     ax.set_xticklabels(sorted_dims, rotation=45, ha='right')
     if metric in PCT_METRICS:
         ax.yaxis.set_major_formatter(_PCT_FMT)
+    elif metric in MONETARY_METRICS:
+        ax.yaxis.set_major_formatter(_GBP_FMT)
     ax.grid(True, alpha=0.2, axis='y')
-    ax.legend(facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
+    _legend_above(ax, *ax.get_legend_handles_labels())
     plt.tight_layout()
 
     # ── 6. SAVE AND RETURN ───────────────────────────────────────────
@@ -854,8 +911,10 @@ def render_comparison_line_chart(graph, client):
     ax.set_ylabel(metric, fontsize=11, color=BRAND["quaternary"])
     if metric in PCT_METRICS:
         ax.yaxis.set_major_formatter(_PCT_FMT)
+    elif metric in MONETARY_METRICS:
+        ax.yaxis.set_major_formatter(_GBP_FMT)
     ax.grid(True, alpha=0.3)
-    ax.legend(facecolor=BRAND["background"], edgecolor=BRAND["quaternary"])
+    _legend_above(ax, *ax.get_legend_handles_labels())
     plt.tight_layout()
 
     # ── 7. SAVE AND RETURN ───────────────────────────────────────────

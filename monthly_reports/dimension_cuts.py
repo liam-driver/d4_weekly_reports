@@ -371,22 +371,6 @@ def fetch_trend_data(client_name, channel, dimension, channel_filter=None, platf
 
     data_key = _build_data_key(dimension, filters, date_range)
 
-    if not isinstance(client.get('dimension_data'), dict):
-        client['dimension_data'] = {}
-    client['dimension_data'][data_key] = {
-        'date_range':      date_range,
-        'time_dimension':  effective_time_dimension,
-        'mom':             data_previous_period,
-        'yoy':             data_previous_year,
-        'timeseries':      data_timeseries,
-        'yoy_timeseries':  data_yoy_timeseries,
-        'mom_timeseries':  data_mom_timeseries,
-    }
-
-    from monthly_reports.main import TimestampEncoder
-    with open(data_path, 'w', encoding='utf-8') as f:
-        json.dump(client, f, ensure_ascii=False, indent=2, cls=TimestampEncoder)
-
     fmt = '%d/%m/%Y'
     resolved_dates = {
         'current_start': windows['current_start'].strftime(fmt),
@@ -397,6 +381,23 @@ def fetch_trend_data(client_name, channel, dimension, channel_filter=None, platf
     if windows['prev_period_available']:
         resolved_dates['prev_start'] = windows['prev_start'].strftime(fmt)
         resolved_dates['prev_end']   = windows['prev_end'].strftime(fmt)
+
+    if not isinstance(client.get('dimension_data'), dict):
+        client['dimension_data'] = {}
+    client['dimension_data'][data_key] = {
+        'date_range':      date_range,
+        'time_dimension':  effective_time_dimension,
+        'mom':             data_previous_period,
+        'yoy':             data_previous_year,
+        'timeseries':      data_timeseries,
+        'yoy_timeseries':  data_yoy_timeseries,
+        'mom_timeseries':  data_mom_timeseries,
+        'resolved_dates':  resolved_dates,
+    }
+
+    from monthly_reports.main import TimestampEncoder
+    with open(data_path, 'w', encoding='utf-8') as f:
+        json.dump(client, f, ensure_ascii=False, indent=2, cls=TimestampEncoder)
 
     return {
         'channel':               channel,
