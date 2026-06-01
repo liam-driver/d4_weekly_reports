@@ -69,14 +69,13 @@ def run_monthly_report(client_name, data_only=False):
     client['start_date_string'] = start_date.strftime("%d/%m/%Y")
     client['end_date_string'] = end_date.strftime("%d/%m/%Y")
 
-    try:
-        if client["plan"] != "":
-            with open("storage/plans.json", "r") as f:
-                plans = json.load(f)
-            client["plan_json"] = plans[client["name"]]
-    except Exception as e:
-        log_error(f"{client['name']} monthly_reports/main: misconfigured 90 Day Plan: {e}")
-        raise
+    if client.get("plan"):
+        try:
+            from core.get_plans import get_client_plan
+            client["plan_json"] = get_client_plan(client["name"])
+        except Exception as e:
+            log_error(f"{client['name']} monthly_reports/main: 90 Day Plan fetch failed: {e}")
+            raise
 
     account_type = client['account_type']
     paid_type = 'paid_lead_gen' if account_type == 'Lead Gen' else 'paid_ecommerce'

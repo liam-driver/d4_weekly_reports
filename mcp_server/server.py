@@ -268,6 +268,7 @@ def fetch_monthly_client_data(client_name: str) -> str:
             "start_date": client.get("mtd_start_date_string"),
             "end_date": client.get("mtd_end_date_string"),
         },
+        "plan": client.get("plan_json"),
     }
     return json.dumps(structured, ensure_ascii=False)
 

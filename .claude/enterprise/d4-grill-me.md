@@ -1,5 +1,5 @@
 ---
-name: grill-me
+name: d4-grill-me
 description: Interview the user relentlessly about a task until reaching shared understanding, resolving each branch of the decision tree. Use at the start of a conversation when the user wants to align before starting work.
 ---
 

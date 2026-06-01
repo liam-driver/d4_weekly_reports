@@ -1,5 +1,5 @@
 ---
-name: google-search-campaign-builder
+name: ppc-search-campaign-builder
 description: Build a Google Search campaign from brief to ready-to-enter ad copy. Use this skill whenever a user wants to build, plan, or structure a new Google Search campaign — including when they mention keywords, ad groups, RSAs, headlines, descriptions, or say things like "let's build a campaign", "I need a search campaign for X", or "prep a campaign ready for launch". This skill covers the full workflow from brief to keywords to negatives to copy to extensions to WOL. Always trigger this skill for new Google Search campaign builds, even if the user only mentions one part of the workflow.
 ---
 

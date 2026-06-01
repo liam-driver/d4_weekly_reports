@@ -1,3 +1,4 @@
+import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
@@ -5,49 +6,65 @@ import numpy as np
 import json
 from pandas.tseries.offsets import MonthEnd, DateOffset
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-def build_plan_json_from_sheet():
-    # 0. Initialise the sheets
-    with open("storage/secrets.json","r") as f:
+
+def _auth_sheets():
+    secrets_path = os.path.join(_PROJECT_ROOT, "storage", "secrets.json")
+    with open(secrets_path, "r") as f:
         secrets = json.load(f)
     scope = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive.file",
         "https://www.googleapis.com/auth/drive",
     ]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(
-        secrets["google_service_account"], 
-        scope
-    )
-    sa = gspread.authorize(creds)
-    with open("storage/config.json", "r") as config_json:
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(secrets["google_service_account"], scope)
+    return gspread.authorize(creds)
+
+
+def _build_client_plan_from_worksheets(client_name, worksheets):
+    client_plans = {}
+    for i, sheet in enumerate(worksheets):
+        values = sheet.get_all_values()
+        df = pd.DataFrame(values)
+        df.replace("", np.nan, inplace=True)
+        weeks = get_weeks(df)
+        plan_type = "current" if i == 0 else "old"
+        plan = {
+            "client_name": client_name,
+            "plan_start": weeks[0].strftime("%d/%m/%y"),
+            "plan_end": (weeks[-1] + pd.Timedelta(days=5)).strftime("%d/%m/%y"),
+            "plan_status": plan_type,
+            "tasks": get_tasks(df, plan_type),
+        }
+        client_plans[sheet.title] = plan
+    return client_plans
+
+
+def get_client_plan(client_name: str) -> dict | None:
+    """Fetch the 90-day plan for a single client directly from Google Sheets."""
+    config_path = os.path.join(_PROJECT_ROOT, "storage", "config.json")
+    with open(config_path, "r") as f:
+        clients = json.load(f)
+    client = next((c for c in clients if c["name"] == client_name), None)
+    if client is None or not client.get("plan"):
+        return None
+    sa = _auth_sheets()
+    sh = sa.open_by_url(client["plan"])
+    return _build_client_plan_from_worksheets(client_name, sh.worksheets())
+
+
+def build_plan_json_from_sheet():
+    sa = _auth_sheets()
+    config_path = os.path.join(_PROJECT_ROOT, "storage", "config.json")
+    with open(config_path, "r") as config_json:
         clients = json.load(config_json)
     plans = {}
     for client in clients:
         sh = sa.open_by_url(client["plan"])
-        client_plans = {}
-        # 1. Loop through each sheet
-        for i, sheet in enumerate(sh.worksheets()):
-            # 2. Initialise sheet
-            values = sheet.get_all_values()
-            df = pd.DataFrame(values)
-            df.replace("", np.nan, inplace=True)
-            weeks = get_weeks(df)
-            # 3. 
-            if i == 0:
-                plan_type = "current"
-            else:
-                plan_type = "old"
-            plan = {
-                    "client_name": client["name"],
-                    "plan_start": weeks[0].strftime("%d/%m/%y"),
-                    "plan_end": (weeks[-1] + pd.Timedelta(days=5)).strftime("%d/%m/%y"),
-                    "plan_status": plan_type,
-                    "tasks": (get_tasks(df, plan_type))
-                }
-            client_plans[sheet.title] = plan
-        plans[client["name"]]= client_plans
-    with open("storage/plans.json", "w", encoding="utf-8") as f:
+        plans[client["name"]] = _build_client_plan_from_worksheets(client["name"], sh.worksheets())
+    output_path = os.path.join(_PROJECT_ROOT, "storage", "plans.json")
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(plans, f, ensure_ascii=False, indent=2)
     return 0
 
@@ -113,4 +130,5 @@ def get_tasks(df, plan_type):
         )
     return tasks
 
-build_plan_json_from_sheet()
+if __name__ == "__main__":
+    build_plan_json_from_sheet()

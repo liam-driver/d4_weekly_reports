@@ -1,5 +1,5 @@
 ---
-name: wol
+name: d4-wol
 description: When the user asks for a WOL message, generate a Working Out Loud update summarising the work completed in the current conversation. Output in chat only — Slack is used for tone context, not for sending.
 ---
 

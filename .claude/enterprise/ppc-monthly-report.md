@@ -21,7 +21,7 @@ Call `fetch_monthly_client_data` with the client name. This returns:
 - `timeseries`: 90-day weekly paid data, keyed by ad channel and ISO week number
 - `mtd`: Current month to date — `paid_data`, `llm_data`, `overall_data`, `start_date`, `end_date`. The date range is the 1st of the current month to two days before today (e.g. if today is 17/05/2026, the range is 01/05/2026 – 15/05/2026). Compared to the same date range last year.
 
-The reporting period for the main deck is the previous full calendar month (e.g. if today is May 2026, the period is 01/04/2026 – 30/04/2026). Client context — background, goals, KPIs, seasonality, historical context, 90-day plan, and `slack_channel_id` — is stored in the project documents for this client.
+The reporting period for the main deck is the previous full calendar month (e.g. if today is May 2026, the period is 01/04/2026 – 30/04/2026). The response also includes a `plan` key containing the client's 90-day plan tasks fetched directly from Google Sheets. Client context — background, goals, KPIs, seasonality, historical context, and `slack_channel_id` — is stored in the project documents for this client.
 
 **1b. Fetch Slack context**
 
@@ -250,7 +250,8 @@ For **trend slides**: use `previous_period` and `previous_year` from the `fetch_
 - `mtd.llm_data`: MTD paid data broken down by ad platform, YoY.
 - `mtd.overall_data`: Site-wide GA4 data for the same MTD window, YoY.
 - `mtd.start_date` / `mtd.end_date`: The actual date bounds of the MTD window (dd/mm/yyyy strings).
-- **Project documents**: Client background, holistic goals, PPC goals, KPIs, seasonality, historical context, and the 90-day plan are in the project documents. These are the authoritative source for client context and supersede any equivalent fields in the JSON data.
+- `plan`: The client's 90-day plan, keyed by sheet tab name. Each entry has `client_name`, `plan_start`, `plan_end`, `plan_status` (`"current"` or `"old"`), and `tasks` — a list of objects with `name`, `desc`, `category`, `status`, `start_date`, `end_date`, and `platform`. Use only tasks from entries where `plan_status == "current"`. This is the authoritative source for Actions and the Gantt slide.
+- **Project documents**: Client background, holistic goals, PPC goals, KPIs, seasonality, and historical context are in the project documents. These are the authoritative source for client context and supersede any equivalent fields in the JSON data.
 
 ### Metric Tier Hierarchy
 
