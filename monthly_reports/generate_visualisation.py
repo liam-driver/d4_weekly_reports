@@ -293,7 +293,7 @@ def render_line_chart(graph, client):
             ax.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col), rotation=45, ha='right')
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
-    ax.set_title(title, fontsize=14, fontweight='bold', pad=12, color=BRAND['quaternary'])
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=32, color=BRAND['quaternary'])
     ax.set_xlabel(_X_COL_LABELS.get(x_col, x_col), fontsize=11)
 
     if not use_group_by and ax2 is not None:
@@ -393,7 +393,7 @@ def render_bar_chart(graph, client):
         ax.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col), rotation=45, ha='right')
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
-    ax.set_title(title, fontsize=14, fontweight='bold', pad=12, color=BRAND['quaternary'])
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=32, color=BRAND['quaternary'])
     ax.set_xlabel(_X_COL_LABELS.get(x_col, x_col), fontsize=11)
     ax.set_ylabel('Value', fontsize=11)
     if metrics and all(m in PCT_METRICS for m in metrics):
@@ -472,7 +472,7 @@ def render_stacked_bar_chart(graph, client):
         ax.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col), rotation=45, ha='right')
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
-    ax.set_title(title, fontsize=14, fontweight='bold', pad=12, color=BRAND['quaternary'])
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=32, color=BRAND['quaternary'])
     ax.set_xlabel(_X_COL_LABELS.get(x_col, x_col), fontsize=11)
     ax.set_ylabel('Value', fontsize=11)
     if metrics and all(m in PCT_METRICS for m in metrics):
@@ -605,7 +605,7 @@ def render_line_bar_combo_chart(graph, client):
     )
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
-    ax1.set_title(title, fontsize=14, fontweight="bold", pad=12, color=BRAND["quaternary"])
+    ax1.set_title(title, fontsize=14, fontweight="bold", pad=32, color=BRAND["quaternary"])
     ax1.set_xlabel(_X_COL_LABELS.get(x_col, x_col), fontsize=11)
     ax1.set_ylabel(bar_metric, fontsize=11, color=BRAND["quaternary"])
     ax2.set_ylabel(line_metric, fontsize=11, color=BRAND["quaternary"])
@@ -685,7 +685,7 @@ def render_horizontal_bar_chart(graph, client):
         )
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=12, color=BRAND["quaternary"])
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=32, color=BRAND["quaternary"])
     ax.set_xlabel("Value", fontsize=11)
     ax.set_yticks(list(y))
     ax.set_yticklabels(df[x_col])
@@ -750,7 +750,7 @@ def render_scatter_chart(graph, client):
         )
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=12, color=BRAND["quaternary"])
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=32, color=BRAND["quaternary"])
     ax.set_xlabel(x_metric, fontsize=11)
     ax.set_ylabel(y_metric, fontsize=11)
     if x_metric in PCT_METRICS:
@@ -818,7 +818,7 @@ def render_comparison_bar_chart(graph, client):
         )
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=12, color=BRAND["quaternary"])
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=32, color=BRAND["quaternary"])
     ax.set_xlabel(x_col, fontsize=11)
     ax.set_ylabel(metric, fontsize=11)
     ax.set_xticks(list(x))
@@ -906,7 +906,7 @@ def render_comparison_line_chart(graph, client):
     ax.set_xticks(range(1, len(curr_labels) + 1))
     ax.set_xticklabels(curr_labels, rotation=45, ha='right')
 
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=12, color=BRAND["quaternary"])
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=32, color=BRAND["quaternary"])
     ax.set_xlabel(_X_COL_LABELS.get(time_col, time_col), fontsize=11)
     ax.set_ylabel(metric, fontsize=11, color=BRAND["quaternary"])
     if metric in PCT_METRICS:
