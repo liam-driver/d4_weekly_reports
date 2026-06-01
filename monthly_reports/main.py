@@ -23,6 +23,15 @@ def config_monthly_dates(client):
     now = pd.Timestamp.now()
     first_of_current_month = now.replace(day=1).normalize()
 
+    # In the first 5 days of the month the current MTD window has almost no data.
+    # Shift the reference month back by one so both the "previous month" period and
+    # MTD land on the month that just completed.
+    if now.day <= 5:
+        first_of_current_month = (first_of_current_month - pd.DateOffset(months=1)).normalize()
+        mtd_end_date = (first_of_current_month + MonthEnd(0)).normalize()
+    else:
+        mtd_end_date = (now - pd.DateOffset(days=2)).normalize()
+
     start_date = (first_of_current_month - pd.DateOffset(months=1)).normalize()
     end_date = (start_date + MonthEnd(0)).normalize()
 
@@ -32,9 +41,7 @@ def config_monthly_dates(client):
     compare_start_yoy = (start_date - pd.DateOffset(years=1)).normalize()
     compare_end_yoy = (compare_start_yoy + MonthEnd(0)).normalize()
 
-    # MTD: 1st of current month to today minus 2 days, compared to same days last year
     mtd_start_date = first_of_current_month
-    mtd_end_date = (now - pd.DateOffset(days=2)).normalize()
     compare_start_mtd = (first_of_current_month - pd.DateOffset(years=1)).normalize()
     compare_end_mtd = (mtd_end_date - pd.DateOffset(years=1)).normalize()
 
