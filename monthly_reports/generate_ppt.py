@@ -153,7 +153,7 @@ def _add_kpi_boxes(slide, kpis, start_x=Inches(7.1), start_y=None,
         body_bottom = Inches(4.62)
         start_y = body_top + (body_bottom - body_top - total_h) / 2
 
-    box_colours = [C["gold"], C["orange"], C["teal"]]
+    box_colours = [C["gold"], C["orange"], C["teal"], C["dark"]]
 
     for i, (label, data) in enumerate(kpis):
         y = start_y + i * (box_h + gap)
@@ -197,19 +197,76 @@ def _add_kpi_boxes(slide, kpis, start_x=Inches(7.1), start_y=None,
         run3.font.color.rgb = C["dark"]
 
 
-def _build_kpis_for(client, data_key='paid_data'):
+def _add_kpi_boxes_horizontal(slide, prs, kpis, top=None, box_h=Inches(1.1), gap=Inches(0.15)):
+    n = len(kpis)
+    margin = Inches(0.5)
+    total_w = prs.slide_width - 2 * margin
+    box_w = (total_w - (n - 1) * gap) // n
+    if top is None:
+        top = prs.slide_height - box_h - Inches(0.25)
+    box_colours = [C["gold"], C["orange"], C["teal"], C["dark"]]
+
+    for i, (label, data) in enumerate(kpis):
+        x = margin + i * (box_w + gap)
+        shape = slide.shapes.add_shape(5, int(x), int(top), int(box_w), int(box_h))
+        shape.adjustments[0] = 0.08
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = box_colours[i % len(box_colours)]
+        shape.line.fill.background()
+
+        tf = shape.text_frame
+        tf.word_wrap = False
+        tf.margin_top    = Inches(0.08)
+        tf.margin_bottom = Inches(0.06)
+        tf.margin_left   = Inches(0.1)
+        tf.margin_right  = Inches(0.1)
+
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        run = p.add_run()
+        run.text = label
+        run.font.name = BRAND["font"]
+        run.font.size = Pt(11)
+        run.font.bold = True
+        run.font.color.rgb = C["dark"]
+
+        p2 = tf.add_paragraph()
+        p2.alignment = PP_ALIGN.CENTER
+        run2 = p2.add_run()
+        run2.text = data.get('curr', '—')
+        run2.font.name = BRAND["font"]
+        run2.font.size = Pt(18)
+        run2.font.bold = True
+        run2.font.color.rgb = C["dark"]
+
+        p3 = tf.add_paragraph()
+        p3.alignment = PP_ALIGN.CENTER
+        run3 = p3.add_run()
+        run3.text = f"vs {data.get('prev', '—')}  ({data.get('pct', '—')})"
+        run3.font.name = BRAND["font"]
+        run3.font.size = Pt(9)
+        run3.font.color.rgb = C["dark"]
+
+
+def _build_kpis_for(client, data_key='paid_data', kpi_count=None):
     paid_total = client.get(data_key, {}).get('Total', {})
     if client.get('account_type') == 'Lead Gen':
-        return [
-            ('Cost',        paid_total.get('Cost', {})),
-            ('Conversions', paid_total.get('Conversions', {})),
-            ('CPA',         paid_total.get('CPA', {})),
+        all_kpis = [
+            ('Cost',            paid_total.get('Cost', {})),
+            ('Conversions',     paid_total.get('Conversions', {})),
+            ('CPA',             paid_total.get('CPA', {})),
+            ('Conversion Rate', paid_total.get('Conversion Rate', {})),
         ]
-    return [
-        ('Cost',    paid_total.get('Cost', {})),
-        ('Revenue', paid_total.get('Transaction Revenue', {})),
-        ('ROAS',    paid_total.get('ROAS', {})),
-    ]
+    else:
+        all_kpis = [
+            ('Cost',            paid_total.get('Cost', {})),
+            ('Revenue',         paid_total.get('Transaction Revenue', {})),
+            ('ROAS',            paid_total.get('ROAS', {})),
+            ('Conversion Rate', paid_total.get('Conversion Rate', {})),
+        ]
+    if kpi_count is not None:
+        return all_kpis[:max(1, min(4, int(kpi_count)))]
+    return all_kpis[:3]
 
 
 def _extract_current_tasks(plan_json):
@@ -321,6 +378,133 @@ def slide_scorecard_commentary(prs, title, summary, bullets, kpis, date_label=No
     except (KeyError, IndexError):
         pass
     _add_kpi_boxes(slide, kpis)
+    return slide
+
+
+def slide_scorecard_vertical(prs, title, summary, bullets, kpis, date_label=None):
+    return slide_scorecard_commentary(prs, title, summary, bullets, kpis, date_label)
+
+
+def slide_scorecard_horizontal(prs, title, summary, bullets, kpis, date_label=None):
+    slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_TITLE_AND_BODY])
+    slide.placeholders[0].text = title
+    try:
+        if date_label:
+            slide.placeholders[2].text = date_label
+    except (KeyError, IndexError):
+        pass
+    try:
+        _set_text(slide.placeholders[4].text_frame, summary)
+    except (KeyError, IndexError):
+        pass
+    # Constrain bullets to upper portion — KPI row occupies bottom ~1.4"
+    try:
+        ph = slide.placeholders[1]
+        ph.top    = Inches(1.30)
+        ph.height = Inches(3.20)
+        _populate_bullets(ph.text_frame, bullets)
+    except (KeyError, IndexError):
+        pass
+    _add_kpi_boxes_horizontal(slide, prs, kpis)
+    return slide
+
+
+def slide_full_chart(prs, title, summary, chart_path, date_label=None):
+    slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_BLANK])
+    _add_title_textbox(slide, title)
+    if date_label:
+        tb = slide.shapes.add_textbox(Inches(0.5), Inches(0.9), Inches(9), Inches(0.35))
+        tf = tb.text_frame
+        run = tf.paragraphs[0].add_run()
+        run.text = date_label
+        run.font.name = BRAND["font"]
+        run.font.size = Pt(9)
+        run.font.color.rgb = C["grey"]
+    # Chart fills the body — tall and wide
+    with Image.open(chart_path) as img:
+        img_w, img_h = img.size
+    chart_width  = prs.slide_width - Inches(0.8)
+    chart_height = int(chart_width * img_h / img_w)
+    chart_top    = Inches(1.25)
+    max_h        = prs.slide_height - chart_top - Inches(0.8)
+    if chart_height > max_h:
+        chart_height = max_h
+        chart_width  = int(chart_height * img_w / img_h)
+    left = (prs.slide_width - chart_width) // 2
+    slide.shapes.add_picture(chart_path, left=left, top=chart_top,
+                             width=chart_width, height=chart_height)
+    # One-line callout at the bottom
+    if summary:
+        tb = slide.shapes.add_textbox(Inches(0.5), prs.slide_height - Inches(0.6),
+                                      prs.slide_width - Inches(1.0), Inches(0.5))
+        tf = tb.text_frame
+        tf.word_wrap = True
+        run = tf.paragraphs[0].add_run()
+        run.text = summary
+        run.font.name = BRAND["font"]
+        run.font.size = Pt(11)
+        run.font.color.rgb = C["dark"]
+    return slide
+
+
+def slide_big_number(prs, title, summary, bullets, chart_path,
+                     hero_label, hero_curr, hero_prev, hero_pct, date_label=None):
+    slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_BLANK])
+    _add_title_textbox(slide, title)
+    if date_label:
+        tb = slide.shapes.add_textbox(Inches(0.5), Inches(0.9), Inches(9), Inches(0.35))
+        tf = tb.text_frame
+        run = tf.paragraphs[0].add_run()
+        run.text = date_label
+        run.font.name = BRAND["font"]
+        run.font.size = Pt(9)
+        run.font.color.rgb = C["grey"]
+
+    body_top = Inches(1.3)
+    body_h   = prs.slide_height - body_top - Inches(0.3)
+
+    # Left panel — big number
+    left_w = Inches(4.2)
+    tb = slide.shapes.add_textbox(Inches(0.5), body_top, left_w, body_h)
+    tf = tb.text_frame
+    tf.word_wrap = True
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+    p = tf.paragraphs[0]
+    run = p.add_run()
+    run.text = hero_label
+    run.font.name = BRAND["font"]
+    run.font.size = Pt(13)
+    run.font.bold = True
+    run.font.color.rgb = C["dark"]
+
+    p2 = tf.add_paragraph()
+    run2 = p2.add_run()
+    run2.text = hero_curr
+    run2.font.name = BRAND["font"]
+    run2.font.size = Pt(52)
+    run2.font.bold = True
+    run2.font.color.rgb = C["gold"]
+
+    p3 = tf.add_paragraph()
+    run3 = p3.add_run()
+    run3.text = f"vs {hero_prev}  ({hero_pct})"
+    run3.font.name = BRAND["font"]
+    run3.font.size = Pt(12)
+    run3.font.color.rgb = C["dark"]
+
+    if summary:
+        p4 = tf.add_paragraph()
+        p4.space_before = Pt(10)
+        run4 = p4.add_run()
+        run4.text = summary
+        run4.font.name = BRAND["font"]
+        run4.font.size = Pt(11)
+        run4.font.color.rgb = C["dark"]
+
+    # Right panel — supporting chart
+    _add_chart_image(slide, chart_path,
+                     left=Inches(4.9), top=body_top, width=Inches(4.8))
     return slide
 
 
@@ -574,6 +758,188 @@ def slide_planning_gantt(prs, title, tasks):
     return slide
 
 
+# ── TABLE DATA EXTRACTION ────────────────────────────────────────────────────
+
+def render_table_data(graph, client, max_rows=12):
+    """Convert dimension_data into (headers, rows) for slide_table / slide_table_commentary.
+
+    Reads the 'mom' comparison cut from dimension_data[data_source].
+    For each dimension value, shows current and previous values plus % change per metric.
+    Rows are sorted by first metric current value descending and capped at max_rows.
+    """
+    data_source = graph.get('data_source')
+    if not data_source:
+        return [], []
+
+    dim_entry   = client.get('dimension_data', {}).get(data_source, {})
+    mom_data    = dim_entry.get('mom', {})
+    metrics     = graph.get('metrics', [])
+    dimension_col = data_source.split('::')[0]
+
+    if not mom_data or not metrics:
+        return [], []
+
+    rows = []
+    for dim_val, metric_dict in mom_data.items():
+        if not isinstance(metric_dict, dict):
+            continue
+        row = [str(dim_val)]
+        for m in metrics:
+            vals = metric_dict.get(m, {})
+            if isinstance(vals, dict):
+                row.append(vals.get('curr', '—'))
+                row.append(vals.get('prev', '—'))
+                row.append(vals.get('pct',  '—'))
+            else:
+                row.extend(['—', '—', '—'])
+        rows.append(row)
+
+    # Sort by first metric curr descending (raw numeric parse)
+    def _sort_key(r):
+        raw = r[1] if len(r) > 1 else '0'
+        try:
+            return float(str(raw).replace('£', '').replace('%', '').replace(',', '').strip())
+        except ValueError:
+            return 0.0
+
+    rows.sort(key=_sort_key, reverse=True)
+    rows = rows[:max_rows]
+
+    headers = [dimension_col]
+    for m in metrics:
+        headers += [m, f"{m} (prev)", f"{m} (%)"]
+
+    return headers, rows
+
+
+# ── SLIDE TEMPLATE REGISTRY ───────────────────────────────────────────────────
+
+SLIDE_TEMPLATE_REGISTRY = {
+    'chart_commentary',
+    'full_chart',
+    'big_number',
+    'scorecard_vertical',
+    'scorecard_horizontal',
+    'table_commentary',
+    'table',
+}
+
+
+# ── TEMPLATE DISPATCH HELPERS ────────────────────────────────────────────────
+
+def _resolve_date_label_for_graph(client, graph):
+    _rd   = client.get('dimension_data', {}).get(graph.get('data_source', ''), {}).get('resolved_dates', {})
+    _comp = graph.get('comparison')
+    if _comp == 'mom':
+        comp_start, comp_end = _rd.get('prev_start'), _rd.get('prev_end')
+    elif _comp == 'yoy':
+        comp_start, comp_end = _rd.get('yoy_start'), _rd.get('yoy_end')
+    else:
+        comp_start, comp_end = None, None
+    return _fmt_date_label(
+        _rd.get('current_start', graph['date_range']['start']),
+        _rd.get('current_end',   graph['date_range']['end']),
+        comp_start, comp_end,
+    )
+
+
+def _extract_hero_metric(client, graph):
+    """Return (label, curr, prev, pct) for the first metric from mom data."""
+    data_source = graph.get('data_source', '')
+    dim_entry   = client.get('dimension_data', {}).get(data_source, {})
+    mom_data    = dim_entry.get('mom', {})
+    metric      = (graph.get('metrics') or [''])[0]
+
+    totals = {}
+    for dim_val, metric_dict in mom_data.items():
+        if not isinstance(metric_dict, dict):
+            continue
+        vals = metric_dict.get(metric, {})
+        if isinstance(vals, dict):
+            totals = vals
+            break
+
+    return (
+        metric,
+        totals.get('curr', '—'),
+        totals.get('prev', '—'),
+        totals.get('pct',  '—'),
+    )
+
+
+def _render_overview_slide(prs, client, template, title, summary, bullets, kpis, date_label):
+    if template == 'scorecard_horizontal':
+        slide_scorecard_horizontal(prs, title, summary, bullets, kpis, date_label)
+    elif template == 'chart_commentary':
+        slide_commentary(prs, title, summary, bullets)
+    else:
+        slide_scorecard_vertical(prs, title, summary, bullets, kpis, date_label)
+
+
+def _render_trend_slide(prs, client, trend):
+    template   = trend.get('template', 'chart_commentary')
+    graph      = trend.get('graph', {})
+    title      = trend['title']
+    summary    = trend['summary']
+    bullets    = trend['bullets']
+    date_label = _resolve_date_label_for_graph(client, graph) if graph.get('data_source') else None
+
+    if template in ('table', 'table_commentary'):
+        headers, rows = render_table_data(graph, client)
+        if not headers:
+            slide_commentary(prs, title, summary, bullets)
+            return
+        if template == 'table_commentary':
+            slide_table_commentary(prs, title, headers, rows, bullets)
+        else:
+            slide_table(prs, title, headers, rows)
+        return
+
+    chart_path = render_graph(client, graph) if graph.get('data_source') else None
+
+    if template == 'full_chart':
+        if chart_path:
+            slide_full_chart(prs, title, summary, chart_path, date_label)
+        else:
+            slide_commentary(prs, title, summary, bullets)
+
+    elif template == 'big_number':
+        if chart_path:
+            hero_label, hero_curr, hero_prev, hero_pct = _extract_hero_metric(client, graph)
+            slide_big_number(prs, title, summary, bullets, chart_path,
+                             hero_label, hero_curr, hero_prev, hero_pct, date_label)
+        else:
+            slide_commentary(prs, title, summary, bullets)
+
+    elif template in ('scorecard_vertical', 'scorecard_horizontal'):
+        # Scorecard as trend: build KPI boxes from top dimension values in mom data
+        data_source = graph.get('data_source', '')
+        dim_entry   = client.get('dimension_data', {}).get(data_source, {})
+        mom_data    = dim_entry.get('mom', {})
+        metric      = (graph.get('metrics') or [''])[0]
+        kpi_items = []
+        for dim_val, metric_dict in list(mom_data.items())[:4]:
+            if not isinstance(metric_dict, dict):
+                continue
+            vals = metric_dict.get(metric, {})
+            if isinstance(vals, dict):
+                kpi_items.append((str(dim_val), vals))
+        if kpi_items:
+            if template == 'scorecard_horizontal':
+                slide_scorecard_horizontal(prs, title, summary, bullets, kpi_items, date_label)
+            else:
+                slide_scorecard_vertical(prs, title, summary, bullets, kpi_items, date_label)
+        else:
+            slide_commentary(prs, title, summary, bullets)
+
+    else:
+        # Default: chart_commentary
+        if chart_path:
+            slide_chart_commentary(prs, title, summary, bullets, chart_path, date_label)
+        else:
+            slide_commentary(prs, title, summary, bullets)
+
+
 # ── PIPELINE ORCHESTRATOR ─────────────────────────────────────────────────────
 
 def generate_ppt(client_name, output_path=None, slide_content=None):
@@ -608,75 +974,59 @@ def generate_ppt(client_name, output_path=None, slide_content=None):
     prs.part.drop_rel(slide_rid)
     prs.slides._sldIdLst.remove(prs.slides._sldIdLst[0])
 
-    kpis = _build_kpis_for(client, 'paid_data')
-    sc   = client['slide_content']
+    sc = client['slide_content']
 
     slide_cover(prs, f'{client["name"]} Monthly Deck')
 
     slide_section_separator(prs, 'Paid Media', variant='navy')
 
+    # ── Performance Overview ──────────────────────────────────────────────────
+    overview_template = sc['overview'].get('template', 'scorecard_vertical')
+    overview_kpi_count = sc['overview'].get('kpi_count', None)
+    kpis = _build_kpis_for(client, 'paid_data', overview_kpi_count)
+    overview_date_label = _fmt_date_label(
+        client['start_date_string'],
+        client['end_date_string'],
+        _iso_to_dmy(client.get('compare_start_mom', '')),
+        _iso_to_dmy(client.get('compare_end_mom', '')),
+    )
     slide_section_separator(prs, f'{prev_month} Performance Overview', variant='gold')
-    slide_scorecard_commentary(
-        prs,
-        title=      f'{prev_month} Performance',
-        summary=    sc['overview']['summary'],
-        bullets=    sc['overview']['bullets'],
-        kpis=       kpis,
-        date_label= _fmt_date_label(
-            client['start_date_string'],
-            client['end_date_string'],
-            _iso_to_dmy(client.get('compare_start_mom', '')),
-            _iso_to_dmy(client.get('compare_end_mom', '')),
-        ),
+    _render_overview_slide(
+        prs, client, overview_template,
+        title=f'{prev_month} Performance',
+        summary=sc['overview']['summary'],
+        bullets=sc['overview']['bullets'],
+        kpis=kpis,
+        date_label=overview_date_label,
     )
 
+    # ── MTD Overview ─────────────────────────────────────────────────────────
     mtd_start_str = client.get('mtd_start_date_string')
     if mtd_start_str and sc.get('mtd_overview'):
         mtd_month = datetime.strptime(mtd_start_str, "%d/%m/%Y").strftime("%B")
-        mtd_kpis = _build_kpis_for(client, 'paid_data_mtd')
+        mtd_template = sc['mtd_overview'].get('template', 'scorecard_vertical')
+        mtd_kpi_count = sc['mtd_overview'].get('kpi_count', None)
+        mtd_kpis = _build_kpis_for(client, 'paid_data_mtd', mtd_kpi_count)
+        mtd_date_label = _fmt_date_label(
+            client['mtd_start_date_string'],
+            client['mtd_end_date_string'],
+            _iso_to_dmy(client.get('compare_start_mtd', '')),
+            _iso_to_dmy(client.get('compare_end_mtd', '')),
+        )
         slide_section_separator(prs, f'{mtd_month} Performance Overview', variant='gold')
-        slide_scorecard_commentary(
-            prs,
-            title=      f'{mtd_month} Performance',
-            summary=    sc['mtd_overview']['summary'],
-            bullets=    sc['mtd_overview']['bullets'],
-            kpis=       mtd_kpis,
-            date_label= _fmt_date_label(
-                client['mtd_start_date_string'],
-                client['mtd_end_date_string'],
-                _iso_to_dmy(client.get('compare_start_mtd', '')),
-                _iso_to_dmy(client.get('compare_end_mtd', '')),
-            ),
+        _render_overview_slide(
+            prs, client, mtd_template,
+            title=f'{mtd_month} Performance',
+            summary=sc['mtd_overview']['summary'],
+            bullets=sc['mtd_overview']['bullets'],
+            kpis=mtd_kpis,
+            date_label=mtd_date_label,
         )
 
+    # ── Trend Slides ─────────────────────────────────────────────────────────
     slide_section_separator(prs, 'Top Level Trends', variant='gold')
     for trend in sc['trends']:
-        chart_path = render_graph(client, trend['graph'])
-        if chart_path:
-            _g = trend['graph']
-            _rd = client.get('dimension_data', {}).get(_g.get('data_source', ''), {}).get('resolved_dates', {})
-            _comp = _g.get('comparison')
-            if _comp == 'mom':
-                _comp_start, _comp_end = _rd.get('prev_start'), _rd.get('prev_end')
-            elif _comp == 'yoy':
-                _comp_start, _comp_end = _rd.get('yoy_start'), _rd.get('yoy_end')
-            else:
-                _comp_start, _comp_end = None, None
-            slide_chart_commentary(
-                prs,
-                title=      trend['title'],
-                summary=    trend['summary'],
-                bullets=    trend['bullets'],
-                chart_path= chart_path,
-                date_label= _fmt_date_label(
-                    _rd.get('current_start', _g['date_range']['start']),
-                    _rd.get('current_end',   _g['date_range']['end']),
-                    _comp_start,
-                    _comp_end,
-                ),
-            )
-        else:
-            slide_commentary(prs, trend['title'], trend['summary'], trend['bullets'])
+        _render_trend_slide(prs, client, trend)
 
     slide_section_separator(prs, 'Plan Overview', variant='gold')
     action_bullets = [

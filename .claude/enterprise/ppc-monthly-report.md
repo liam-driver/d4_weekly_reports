@@ -44,6 +44,31 @@ Using the baseline data and Slack context, render the **Initial Preview** in cha
 
 Invite the user to adopt, adapt, or add to the trend suggestions, and flag any changes to Overview or Actions.
 
+**1d. Show the template menu**
+
+After the initial preview, display the following once so the user knows what's available. Do not repeat this on every slide — show it once here.
+
+---
+
+**Slide Templates Available**
+
+The LLM will pick a template for each slide based on what tells the story best. You can override any choice during the slide confirmation step.
+
+| Template | Best for |
+|---|---|
+| `chart_commentary` | Default for trend slides. Chart on the right, commentary on the left. |
+| `full_chart` | When the chart tells the whole story. Large chart with a one-line callout. |
+| `big_number` | When one headline metric stands out. Large number + supporting chart. |
+| `scorecard_vertical` | Default for performance overview. KPI boxes stacked on the right. |
+| `scorecard_horizontal` | KPI boxes in a row across the bottom — better for 3–4 KPIs side-by-side. |
+| `table_commentary` | Tabular data alongside commentary. Good for ranking or multi-metric comparisons. |
+| `table` | Full-width table, no commentary. Good for dense reference data. |
+
+**Overview slides** default to `scorecard_vertical`. **Trend slides** default to `chart_commentary`.
+KPI slides support 1–4 KPI boxes — the LLM will propose the count, and you can adjust it.
+
+---
+
 ---
 
 ### Phase 2: Slide-by-slide trend building
@@ -137,9 +162,15 @@ YoY timeseries on a **shared calendar axis** (two lines plotted against their ac
 
 **2f. Render the slide**
 
-Once the graph spec is confirmed in step 2e, render the full slide in the **Slide Preview Format** section below — title, summary, bullets, and graph spec. Use the graph spec locked in step 2e verbatim — do not regenerate it. Write all commentary using the data fetched in step 2d. Follow all Commentary Rules when generating content.
+Once the graph spec is confirmed in step 2e, choose the most appropriate template for this slide from the template bank. Lead with your recommendation and the reasoning (e.g. "I'd use `chart_commentary` here — the time series tells the story cleanly with commentary alongside"). Then render the full slide in the **Slide Preview Format** section below — title, summary, bullets, graph spec, and chosen template. Use the graph spec locked in step 2e verbatim — do not regenerate it. Write all commentary using the data fetched in step 2d. Follow all Commentary Rules when generating content.
 
-Then preview the graph inline by calling the `preview_graph` MCP tool:
+For `table` and `table_commentary` templates: set `graph_type: "table"` in the graph spec. The renderer will produce a tabular layout instead of a chart. Use when ranking, multi-metric comparisons, or dense data is more readable as rows than a chart.
+
+For `big_number` templates: use exactly 1 metric in the graph spec. The renderer extracts the headline value from that metric automatically.
+
+For `scorecard_vertical` and `scorecard_horizontal` as trend templates: use `graph_type: "comparison_bar"` or `"comparison_line"` and include the metrics you want as KPI boxes.
+
+Then preview the graph inline by calling the `preview_graph` MCP tool (skip for `table` and `table_commentary` — no chart to preview):
 - `client_name`: the client name
 - `graph_spec`: the graph spec JSON object serialised as a string
 
@@ -333,6 +364,7 @@ Render this for each trend slide during Phase 2, after the template is confirmed
 ---
 
 **Slide: [trend.title]** | `[graph_type]` · [metrics joined by ', ']
+**Template:** `[template]` — [one-line reason for the choice]
 [trend.summary]
 - [bullet 1]
 - [bullet 2]
@@ -340,7 +372,7 @@ Render this for each trend slide during Phase 2, after the template is confirmed
 
 ---
 
-After rendering, ask: **"Happy with this slide? Say 'confirmed' to lock it in, or let me know what to change."**
+After rendering, ask: **"Happy with this slide? Say 'confirmed' to lock it in, or let me know what to change. You can also swap the template — alternatives: `chart_commentary`, `full_chart`, `big_number`, `scorecard_vertical`, `scorecard_horizontal`, `table_commentary`, `table`."**
 
 ---
 
@@ -382,7 +414,9 @@ All graph specs must conform exactly to this schema. The pipeline will fail at r
 
 ### Valid graph_types
 
-`line`, `bar`, `stacked_bar`, `pie`, `line_bar_combo`, `horizontal_bar`, `scatter`, `comparison_bar`, `comparison_line`
+`line`, `bar`, `stacked_bar`, `pie`, `line_bar_combo`, `horizontal_bar`, `scatter`, `comparison_bar`, `comparison_line`, `table`
+
+`table` — produces a tabular layout instead of a chart. Use with `table_commentary` or `table` templates. The renderer reads the `mom` comparison data from `dimension_data[data_source]` and builds rows with current, previous, and % change per metric. `style` should be `"distribution"` for table specs.
 
 ### Valid dimensions.x
 
@@ -433,23 +467,22 @@ Generate a JSON object exactly matching this structure before calling `generate_
 {
   "overview": {
     "summary": "string — single headline sentence for the previous-month overview slide",
-    "bullets": [
-      {"point": "string"}
-    ]
+    "bullets": [{"point": "string"}],
+    "template": "string — one of the valid slide templates. Default: \"scorecard_vertical\". Omit to use the default.",
+    "kpi_count": "integer — number of KPI boxes to show (1–4). Default: 3. Omit to use the default."
   },
   "mtd_overview": {
     "summary": "string — single headline sentence for the current-month TD slide (15 words max, YoY framing)",
-    "bullets": [
-      {"point": "string"}
-    ]
+    "bullets": [{"point": "string"}],
+    "template": "string — one of the valid slide templates. Default: \"scorecard_vertical\". Omit to use the default.",
+    "kpi_count": "integer — number of KPI boxes to show (1–4). Default: 3. Omit to use the default."
   },
   "trends": [
     {
       "title": "string — short trend label (e.g. 'Paid Search ROAS Recovery')",
       "summary": "string — 15 words maximum, hard limit. Lead with direction. One data point only if it adds something a direction word cannot.",
-      "bullets": [
-        {"point": "string"}
-      ],
+      "bullets": [{"point": "string"}],
+      "template": "string — one of the valid slide templates. Default: \"chart_commentary\". Confirmed with the user in step 2f.",
       "graph": {
         "graph_type": "string — one of the valid graph_types",
         "dimensions": {
@@ -481,9 +514,13 @@ Generate a JSON object exactly matching this structure before calling `generate_
 
 **Field constraints:**
 - `overview.bullets`: 3–6 items
+- `overview.template`: one of `scorecard_vertical`, `scorecard_horizontal`, `chart_commentary`. Defaults to `scorecard_vertical` if omitted.
+- `overview.kpi_count`: integer 1–4. Defaults to 3 if omitted. Only applies to scorecard templates.
 - `mtd_overview.bullets`: 3–6 items. Include `mtd_overview` whenever `mtd.start_date` was present in the fetch response — omit the key entirely if MTD data was not available.
+- `mtd_overview.template` / `mtd_overview.kpi_count`: same rules as `overview`.
 - `trends[].bullets`: 1–4 items per trend
-- `trends[].graph`: required on every trend — never `null`
+- `trends[].template`: one of the 7 valid slide templates. Defaults to `chart_commentary` if omitted.
+- `trends[].graph`: required on every trend — never `null`. For `table` and `table_commentary` templates, set `graph_type: "table"` and `style: "distribution"`.
 
 ---
 
