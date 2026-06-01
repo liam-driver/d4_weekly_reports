@@ -808,7 +808,7 @@ def render_comparison_bar_chart(graph, client):
     fig, ax = plt.subplots(figsize=(10, 5))
 
     # ── 4. PLOT GROUPED BARS ─────────────────────────────────────────
-    bar_width = 0.35
+    bar_width = 0.2
     x = range(len(sorted_dims))
 
     for i, period in enumerate(['Current', 'Previous']):
