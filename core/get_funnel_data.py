@@ -214,9 +214,9 @@ def pivot_df(df_grouped, breakdown_dimension, metrics, table_type):
 
 # Convert datafram to json format
 def df_to_json(df_pivot, breakdown_dimension, metrics, table_type):    
-    int_metrics = ["Impressions", "Clicks", "Transactions", "Conversions", "Sessions", "Holds", "Hooks","Views"]
+    int_metrics = ["Impressions", "Clicks", "Transactions", "Conversions", "Sessions", "Holds", "Hooks", "Views"]
     pct_metrics = ["CTR", "Conversion Rate", "ROAS", "Impression Share", "Abs. Top Impression Share", "View Rate", "Hook Rate", "Hold Rate"]
-    gbp_metrics = ["Cost", "Transaction Revenue", "CPA", "CPC", "AOV"]
+    gbp_metrics = ["Cost", "Transaction Revenue", "CPA", "CPC", "AOV", "CPV", "Cost Per Hook"]
 
     output = {}
     # Create a json for when there is comparison

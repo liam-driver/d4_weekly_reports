@@ -118,6 +118,9 @@ _ADDITIVE_METRIC_CANDIDATES = [
     ('Impressions',        ['Impressions']),
     ('Clicks',             ['Clicks']),
     ('Transactions',       ['Transactions']),
+    ('Views',              ['Views']),
+    ('Hooks',              ['Hooks']),
+    ('Holds',              ['Holds']),
 ]
 
 
@@ -145,6 +148,16 @@ def _compute_derived_metrics(df_work):
         df_work['Conversion Rate'] = safe_div(df_work[conv_col], df_work['Clicks'], multiplier=100)
     if 'Transactions' in df_work.columns and 'Transaction Revenue' in df_work.columns:
         df_work['AOV'] = safe_div(df_work['Transaction Revenue'], df_work['Transactions'], multiplier=1)
+    if 'Views' in df_work.columns and 'Impressions' in df_work.columns:
+        df_work['View Rate'] = safe_div(df_work['Views'], df_work['Impressions'], multiplier=100)
+    if 'Hooks' in df_work.columns and 'Impressions' in df_work.columns:
+        df_work['Hook Rate'] = safe_div(df_work['Hooks'], df_work['Impressions'], multiplier=100)
+    if 'Holds' in df_work.columns and 'Impressions' in df_work.columns:
+        df_work['Hold Rate'] = safe_div(df_work['Holds'], df_work['Impressions'], multiplier=100)
+    if 'Cost' in df_work.columns and 'Views' in df_work.columns:
+        df_work['CPV'] = safe_div(df_work['Cost'], df_work['Views'], multiplier=1)
+    if 'Cost' in df_work.columns and 'Hooks' in df_work.columns:
+        df_work['Cost Per Hook'] = safe_div(df_work['Cost'], df_work['Hooks'], multiplier=1)
     return df_work
 
 
@@ -270,9 +283,9 @@ def get_dimension_timeseries(client, dimension_column, filters=None, time_dimens
     df_work = df_work.rename(columns=rename_map)
     df_work = _compute_derived_metrics(df_work)
 
-    int_metrics = ['Impressions', 'Clicks', 'Transactions', 'Conversions', 'Sessions']
-    pct_metrics = ['CTR', 'Conversion Rate', 'ROAS', 'Impression Share', 'Abs. Top Impression Share']
-    gbp_metrics = ['Cost', 'Transaction Revenue', 'CPA', 'CPC', 'AOV']
+    int_metrics = ['Impressions', 'Clicks', 'Transactions', 'Conversions', 'Sessions', 'Views', 'Hooks', 'Holds']
+    pct_metrics = ['CTR', 'Conversion Rate', 'ROAS', 'Impression Share', 'Abs. Top Impression Share', 'View Rate', 'Hook Rate', 'Hold Rate']
+    gbp_metrics = ['Cost', 'Transaction Revenue', 'CPA', 'CPC', 'AOV', 'CPV', 'Cost Per Hook']
     metrics = [col for col in df_work.columns if col not in [dimension_column, time_dimension]]
 
     result = {}
