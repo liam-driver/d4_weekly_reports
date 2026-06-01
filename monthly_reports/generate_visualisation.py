@@ -207,7 +207,14 @@ def _format_x_labels(values, x_col):
                 return str(v)
         return [_fmt_month(v) for v in values]
     if x_col == 'Date':
-        return [v.strftime('%b %d') if hasattr(v, 'strftime') else str(v) for v in values]
+        def _fmt_date(v):
+            if hasattr(v, 'strftime'):
+                return v.strftime('%d/%m')
+            try:
+                return pd.to_datetime(v).strftime('%d/%m')
+            except Exception:
+                return str(v)
+        return [_fmt_date(v) for v in values]
     return [str(v) for v in values]
 
 
@@ -313,7 +320,7 @@ def render_line_chart(graph, client):
         ax2.yaxis.set_major_formatter(_GBP_FMT)
 
     if x_col == 'Date':
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m'))
         fig.autofmt_xdate(rotation=45)
 
     ax.grid(True, alpha=0.3)
