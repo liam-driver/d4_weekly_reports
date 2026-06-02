@@ -195,10 +195,44 @@ _X_COL_LABELS = {
 }
 
 
-def _format_x_labels(values, x_col):
+def _iso_week_to_wc_labels(week_nums, anchor_year):
+    """Convert ISO week numbers to 'W/C dd/mm' labels using a known anchor year.
+
+    anchor_year is the year the report period ends in (from date_range.end).
+    A drop of >26 between consecutive sorted weeks signals a year boundary,
+    meaning the lower week numbers belong to anchor_year + 1.
+    """
+    from datetime import date
+    unique_sorted = sorted(set(int(w) for w in week_nums))
+    if not unique_sorted:
+        return []
+
+    week_to_year = {}
+    year = anchor_year
+    prev = None
+    for w in reversed(unique_sorted):
+        if prev is not None and prev - w > 26:
+            year += 1
+        week_to_year[w] = year
+        prev = w
+
+    labels = {}
+    for w in unique_sorted:
+        try:
+            monday = date.fromisocalendar(week_to_year[w], w, 1)
+            labels[w] = f"W/C {monday.strftime('%d/%m')}"
+        except ValueError:
+            labels[w] = f"Wk {w}"
+
+    return [labels[int(w)] for w in week_nums]
+
+
+def _format_x_labels(values, x_col, end_year=None):
     """Return display-ready tick labels for a given x-axis dimension."""
     if x_col == 'Week number (ISO)':
-        return [f'Wk {v}' for v in values]
+        from datetime import date
+        anchor = end_year or date.today().year
+        return _iso_week_to_wc_labels(values, anchor)
     if x_col == 'Month':
         def _fmt_month(v):
             try:
@@ -231,6 +265,15 @@ def _apply_monthly_filters(df, filters):
         else:
             df = df[df[dim].str.contains(str(val), case=False, na=False)]
     return df
+
+
+def _end_year(graph):
+    """Extract the year from graph['date_range']['end'], e.g. '2026-05-31' → 2026."""
+    try:
+        return int(graph["date_range"]["end"][:4])
+    except (KeyError, TypeError, ValueError):
+        from datetime import date
+        return date.today().year
 
 
 def render_graph(client, spec):
@@ -284,7 +327,7 @@ def render_line_chart(graph, client):
                             color=colour_cycle[i % len(colour_cycle)])
         if x_col != 'Date':
             ax.set_xticks(range(len(all_x_vals)))
-            ax.set_xticklabels(_format_x_labels(all_x_vals, x_col), rotation=45, ha='right')
+            ax.set_xticklabels(_format_x_labels(all_x_vals, x_col, _end_year(graph)), rotation=45, ha='right')
     else:
         # Single-series: aggregate all rows per x_col value
         df = df.groupby(x_col, as_index=False)[metrics].sum()
@@ -297,7 +340,7 @@ def render_line_chart(graph, client):
             target_ax.fill_between(x_pos, df[metric], alpha=0.1, color=colour)
         if x_col != 'Date':
             ax.set_xticks(list(x_pos))
-            ax.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col), rotation=45, ha='right')
+            ax.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col, _end_year(graph)), rotation=45, ha='right')
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
     ax.set_title(title, fontsize=14, fontweight='bold', pad=32, color=BRAND['quaternary'])
@@ -385,7 +428,7 @@ def render_bar_chart(graph, client):
             ax.bar([pos + offset for pos in x], heights, width=bar_width,
                    label=str(group_val), color=colour_cycle[i % len(colour_cycle)], alpha=0.9)
         ax.set_xticks(list(x))
-        ax.set_xticklabels(_format_x_labels(x_vals, x_col), rotation=45, ha='right')
+        ax.set_xticklabels(_format_x_labels(x_vals, x_col, _end_year(graph)), rotation=45, ha='right')
     else:
         df = df.groupby(x_col, as_index=False)[metrics].sum()
         num_metrics = len(metrics)
@@ -397,7 +440,7 @@ def render_bar_chart(graph, client):
             ax.bar([pos + offset for pos in x], df[metric], width=bar_width,
                    label=metric, color=colour, alpha=0.9)
         ax.set_xticks(list(x))
-        ax.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col), rotation=45, ha='right')
+        ax.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col, _end_year(graph)), rotation=45, ha='right')
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
     ax.set_title(title, fontsize=14, fontweight='bold', pad=32, color=BRAND['quaternary'])
@@ -464,7 +507,7 @@ def render_stacked_bar_chart(graph, client):
                    color=colour_cycle[i % len(colour_cycle)], alpha=0.9)
             bottoms = [b + h for b, h in zip(bottoms, heights)]
         ax.set_xticks(list(x))
-        ax.set_xticklabels(_format_x_labels(x_vals, x_col), rotation=45, ha='right')
+        ax.set_xticklabels(_format_x_labels(x_vals, x_col, _end_year(graph)), rotation=45, ha='right')
     else:
         # Stack per metric over x_col (existing behaviour)
         df = df.groupby(x_col, as_index=False)[metrics].sum()
@@ -476,7 +519,7 @@ def render_stacked_bar_chart(graph, client):
                    color=colour, alpha=0.9)
             bottoms = [b + v for b, v in zip(bottoms, df[metric])]
         ax.set_xticks(list(x))
-        ax.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col), rotation=45, ha='right')
+        ax.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col, _end_year(graph)), rotation=45, ha='right')
 
     # ── 5. FORMATTING ────────────────────────────────────────────────
     ax.set_title(title, fontsize=14, fontweight='bold', pad=32, color=BRAND['quaternary'])
@@ -627,7 +670,7 @@ def render_line_bar_combo_chart(graph, client):
         ax2.yaxis.set_major_formatter(_GBP_FMT)
 
     ax1.set_xticks(list(x))
-    ax1.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col), rotation=45, ha="right")
+    ax1.set_xticklabels(_format_x_labels(df[x_col].tolist(), x_col, _end_year(graph)), rotation=45, ha="right")
 
     ax1.grid(True, alpha=0.2, axis="y")
 
@@ -892,7 +935,7 @@ def render_comparison_line_chart(graph, client):
     prev_agg['_pos'] = range(1, len(prev_agg) + 1)
 
     # x-axis labels come from the current period's actual time values
-    curr_labels = _format_x_labels(curr_agg[time_col].tolist(), time_col)
+    curr_labels = _format_x_labels(curr_agg[time_col].tolist(), time_col, _end_year(graph))
 
     # ── 4. CREATE THE FIGURE ─────────────────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -903,7 +946,7 @@ def render_comparison_line_chart(graph, client):
                 label='Current', color=BRAND["colours"][0])
         ax.fill_between(curr_agg['_pos'], curr_agg[metric], alpha=0.1, color=BRAND["colours"][0])
 
-    if not prev_agg.empty:
+    if len(prev_agg) >= 2:
         period_label = 'Previous Year' if comparison == 'yoy' else 'Previous Period'
         ax.plot(prev_agg['_pos'], prev_agg[metric], linewidth=2.5, marker='o', markersize=4,
                 label=period_label, color=BRAND["colours"][1], linestyle='--')
@@ -954,16 +997,112 @@ def initialise_brand():
     })
 
 
+def render_big_number_chart(graph, client):
+    return render_line_chart(graph, client)
+
+
+def render_table_chart(graph, client):
+    title       = graph.get("title", "")
+    data_source = graph.get("data_source")
+    if not data_source:
+        return None
+
+    comparison    = graph.get("graph_type") == "table_comparison"
+    dim_entry     = client.get("dimension_data", {}).get(data_source, {})
+    comp_key      = "yoy" if graph.get("comparison") == "yoy" else "mom"
+    comp_data     = dim_entry.get(comp_key, {})
+    metrics       = graph.get("metrics", [])
+    dimension_col = data_source.split("::")[0]
+
+    if not comp_data or not metrics:
+        return None
+
+    rows = []
+    for dim_val, metric_dict in comp_data.items():
+        if not isinstance(metric_dict, dict):
+            continue
+        row = [str(dim_val)]
+        for m in metrics:
+            vals = metric_dict.get(m, {})
+            if isinstance(vals, dict):
+                row.append(str(vals.get("curr", "—")))
+                if comparison:
+                    row.append(str(vals.get("prev", "—")))
+                    row.append(str(vals.get("pct", "—")))
+            else:
+                row.append("—")
+                if comparison:
+                    row.extend(["—", "—"])
+        rows.append(row)
+
+    def _sort_key(r):
+        raw = r[1] if len(r) > 1 else "0"
+        try:
+            return float(str(raw).replace("£", "").replace("%", "").replace(",", "").strip())
+        except ValueError:
+            return 0.0
+
+    rows.sort(key=_sort_key, reverse=True)
+    rows = rows[:12]
+
+    headers = [dimension_col]
+    for m in metrics:
+        headers.append(m)
+        if comparison:
+            headers += [f"{m} (prev)", f"{m} (%)"]
+
+    if not rows:
+        return None
+
+    fig_height = max(3, len(rows) * 0.4 + 1.5)
+    fig, ax = plt.subplots(figsize=(max(8, len(headers) * 1.8), fig_height))
+    ax.axis("off")
+
+    tbl = ax.table(
+        cellText=rows,
+        colLabels=headers,
+        cellLoc="center",
+        loc="center",
+    )
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(9)
+    tbl.auto_set_column_width(list(range(len(headers))))
+
+    for col_idx in range(len(headers)):
+        cell = tbl[0, col_idx]
+        cell.set_facecolor(BRAND["quaternary"])
+        cell.get_text().set_color("white")
+        cell.get_text().set_fontweight("bold")
+
+    for row_idx in range(1, len(rows) + 1):
+        bg = BRAND["background"] if row_idx % 2 == 0 else "#FFFFFF"
+        for col_idx in range(len(headers)):
+            tbl[row_idx, col_idx].set_facecolor(bg)
+
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=12, color=BRAND["quaternary"])
+    plt.tight_layout()
+
+    charts_dir = os.path.join(PROJECT_ROOT, "charts")
+    os.makedirs(charts_dir, exist_ok=True)
+    path = os.path.join(charts_dir, f"{title.replace(' ', '_')}.png")
+    fig.savefig(path, bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    return path
+
+
 # Dictionary containing all the graph types and the functions that correspond to them
 GRAPH_REGISTRY = {
-    "line":             render_line_chart,
-    "bar":              render_bar_chart,
-    "stacked_bar":      render_stacked_bar_chart,
-    "pie":              render_pie_chart,
-    "line_bar_combo":   render_line_bar_combo_chart,
-    "horizontal_bar":   render_horizontal_bar_chart,
-    "scatter":          render_scatter_chart,
-    "comparison_bar":   render_comparison_bar_chart,
-    "comparison_line":  render_comparison_line_chart,
+    "line":               render_line_chart,
+    "bar":                render_bar_chart,
+    "stacked_bar":        render_stacked_bar_chart,
+    "pie":                render_pie_chart,
+    "line_bar_combo":     render_line_bar_combo_chart,
+    "horizontal_bar":     render_horizontal_bar_chart,
+    "scatter":            render_scatter_chart,
+    "comparison_bar":     render_comparison_bar_chart,
+    "comparison_line":    render_comparison_line_chart,
+    "big_number":         render_big_number_chart,
+    "table":              render_table_chart,
+    "table_comparison":   render_table_chart,
 }
 
