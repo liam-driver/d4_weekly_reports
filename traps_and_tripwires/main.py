@@ -262,7 +262,10 @@ def main():
 
     for client in clients:
         client = config_dates(client)
-        client['end_date'] = client['end_date'] + timedelta(days=1)
+        # Always use current month MTD for T&T; config_dates falls back to last month in first 7 days
+        now = pd.Timestamp.now()
+        client['start_date'] = now.replace(day=1).normalize()
+        client['end_date'] = (now - pd.DateOffset(days=2)).normalize() + pd.Timedelta(days=1)
         client_channels[client['name']] = client.get('slack_channel_id', '')
         try:
             checks = run_checks(client)
