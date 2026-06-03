@@ -447,13 +447,18 @@ if __name__ == "__main__":
                 filename = scope["path"][len("/files/"):]
                 slides_dir = os.path.join(PROJECT_ROOT, "slides")
                 file_path = os.path.join(slides_dir, filename)
+                _MEDIA_TYPES = {
+                    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                }
+                _, ext = os.path.splitext(filename)
                 if (os.path.abspath(file_path).startswith(os.path.abspath(slides_dir))
                         and os.path.isfile(file_path)
-                        and filename.endswith(".pptx")):
+                        and ext in _MEDIA_TYPES):
                     response = FileResponse(
                         file_path,
                         filename=filename,
-                        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                        media_type=_MEDIA_TYPES[ext],
                     )
                 else:
                     response = Response(content='{"error":"Not found"}', status_code=404, media_type="application/json")
