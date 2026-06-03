@@ -142,7 +142,7 @@ Apply at all times when selecting evidence and framing points:
 
 ### Commentary Sections
 
-**plan_overview**: For every task in `plans_90_day` marked 'current' (not 'old'): output the task name, description, and status as-is; convert start/end dates from ISO to dd/mm/yyyy; write a one-sentence client-friendly summary (no marketing fluff).
+**plan_overview**: For every task in `plans_90_day` marked 'current' (not 'old') whose date window overlaps the current reporting month (task `start_date` ≤ last day of report month AND task `end_date` ≥ first day of report month): output the task name, description, and status as-is; convert start/end dates from ISO to dd/mm/yyyy; write a one-sentence client-friendly summary (no marketing fluff). Do not include tasks that start after the end of the reporting month or ended before the reporting month began.
 
 **performance_overview**: 3–4 sentence paragraph comparing `mom.paid_data` and `mom.overall_data` against the holistic and paid goals in the project documents, with YoY context from `yoy.paid_data` where relevant. Focus on paid performance, framed within holistic goals. Only use data that aligns with the KPIs defined in the project documents. Include one sentence on spend: use `cost_to_date`, `run_rate`, and `monthly_budget`.
 

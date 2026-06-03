@@ -4,7 +4,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 import numpy as np
 import json
-from pandas.tseries.offsets import MonthEnd, DateOffset
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -35,7 +34,7 @@ def _build_client_plan_from_worksheets(client_name, worksheets):
             "plan_start": weeks[0].strftime("%d/%m/%y"),
             "plan_end": (weeks[-1] + pd.Timedelta(days=5)).strftime("%d/%m/%y"),
             "plan_status": plan_type,
-            "tasks": get_tasks(df, plan_type),
+            "tasks": get_tasks(df),
         }
         client_plans[sheet.title] = plan
     return client_plans
@@ -79,7 +78,7 @@ def get_weeks(df):
     return(dates_cleaned)        
 
 # Convert the google sheet tasks into a json object that can be added to the plans json
-def get_tasks(df, plan_type):
+def get_tasks(df):
     # Check for misconfigured headers
     header_row_candidates = df.index[df[1] == "Task"]
     if len(header_row_candidates) == 0:
@@ -93,24 +92,9 @@ def get_tasks(df, plan_type):
     mask = (cat == "Active Workstream") | (cat == "")
     df = df.loc[mask]
 
-    # --- pick the "reporting month" (current, unless we're in the first 5 days) ---
-    today = pd.Timestamp.now(tz="UTC").normalize()
-
-    report_month_anchor = today
-    if today.day <= 5:
-        report_month_anchor = today - DateOffset(months=1)
-
-    month_start = report_month_anchor.replace(day=1)
-    month_end = month_start + MonthEnd(0)
-
-    # --- parse dates once ---
     df["Start Date"] = pd.to_datetime(df["Start Date"], dayfirst=True, errors="coerce", utc=True)
     df["End Date"]   = pd.to_datetime(df["End Date"],   dayfirst=True, errors="coerce", utc=True)
 
-    if plan_type == "current":
-        mask = ((df["Start Date"] <= month_end) & (df["End Date"] >= month_start)) | df["End Date"].isna()
-        df = df.loc[mask].copy()
-    
     # Create a list of tasks, each task is a json objected appended to the 'task' list
     tasks=[]
     for idx, row in df.iterrows():

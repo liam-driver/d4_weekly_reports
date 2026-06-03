@@ -8,7 +8,8 @@ import argparse
 import shutil
 import json
 from calendar import monthrange
-from datetime import datetime
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from lxml import etree
 from pptx import Presentation
 from pptx.util import Pt, Inches
@@ -284,29 +285,56 @@ def _extract_current_tasks(plan_json):
         return plan_json
     if 'tasks' in plan_json and 'plan_status' not in plan_json:
         return plan_json['tasks']
+
+    tasks = []
     for quarter_data in plan_json.values():
         if isinstance(quarter_data, dict) and quarter_data.get('plan_status') == 'current':
             tasks = quarter_data.get('tasks', [])
-            return tasks if isinstance(tasks, list) else []
-    return []
+            if not isinstance(tasks, list):
+                return []
+            break
+
+    today = datetime.now()
+    anchor = today.replace(day=1) - relativedelta(months=1) if today.day <= 5 else today.replace(day=1)
+    month_start = anchor
+    month_end = (anchor + relativedelta(months=1)) - timedelta(days=1)
+
+    def _overlaps(t):
+        for fmt in ('%d/%m/%y', '%d/%m/%Y', '%Y-%m-%d'):
+            try:
+                s = datetime.strptime(t.get('start_date', ''), fmt)
+                e = datetime.strptime(t.get('end_date', ''), fmt)
+                return s <= month_end and e >= month_start
+            except (ValueError, TypeError):
+                continue
+        return False
+
+    return [t for t in tasks
+            if t.get('category', '').strip().lower() == 'active workstream'
+            and _overlaps(t)]
 
 
 def _extract_all_plan_tasks(plan_json):
+    """Returns (tasks, plan_start_str, plan_end_str) for the current quarter."""
     if not plan_json:
-        return []
+        return [], None, None
 
     def _active(tasks):
         return [t for t in tasks if t.get('category', '').strip().lower() == 'active workstream']
 
     if isinstance(plan_json, list):
-        return _active(plan_json)
+        return _active(plan_json), None, None
     if 'tasks' in plan_json and 'plan_status' not in plan_json:
-        return _active(plan_json['tasks'])
+        return _active(plan_json['tasks']), None, None
     for quarter_data in plan_json.values():
         if isinstance(quarter_data, dict) and quarter_data.get('plan_status') == 'current':
             tasks = quarter_data.get('tasks', [])
-            return _active(tasks) if isinstance(tasks, list) else []
-    return []
+            return (
+                _active(tasks) if isinstance(tasks, list) else [],
+                quarter_data.get('plan_start'),
+                quarter_data.get('plan_end'),
+            )
+    return [], None, None
 
 
 def _fmt_date(date_str):
@@ -633,7 +661,7 @@ def slide_table_commentary(prs, title, headers, rows, bullets, status_col=None):
     return slide
 
 
-def slide_planning_gantt(prs, title, tasks):
+def slide_planning_gantt(prs, title, tasks, plan_start_str=None, plan_end_str=None):
     if not tasks:
         return None
 
@@ -655,10 +683,23 @@ def slide_planning_gantt(prs, title, tasks):
     if not parsed:
         return None
 
-    # Derive monthly columns from actual task date span
-    period_start    = min(t['start'] for t in parsed).replace(day=1)
-    last_task_end   = max(t['end']   for t in parsed)
-    last_month_start = last_task_end.replace(day=1)
+    # Anchor the time axis to the plan window when available, else fall back to task span
+    def _parse_plan_date(s):
+        if not s:
+            return None
+        for fmt in ('%d/%m/%y', '%d/%m/%Y', '%Y-%m-%d'):
+            try:
+                return datetime.strptime(s, fmt)
+            except ValueError:
+                continue
+        return None
+
+    plan_start_dt = _parse_plan_date(plan_start_str)
+    plan_end_dt   = _parse_plan_date(plan_end_str)
+
+    period_start = (plan_start_dt if plan_start_dt else min(t['start'] for t in parsed)).replace(day=1)
+    axis_end     = plan_end_dt if plan_end_dt else max(t['end'] for t in parsed)
+    last_month_start = axis_end.replace(day=1)
 
     months = []
     m = period_start
@@ -1185,9 +1226,9 @@ def generate_ppt(client_name, output_path=None, slide_content=None):
     current_tasks = _extract_current_tasks(plan_json) if plan_json else []
     if current_tasks:
         slide_action_kanban(prs, 'Plan Overview', current_tasks)
-    all_tasks = _extract_all_plan_tasks(plan_json) if plan_json else []
+    all_tasks, plan_start, plan_end = _extract_all_plan_tasks(plan_json) if plan_json else ([], None, None)
     if all_tasks:
-        slide_planning_gantt(prs, '90 Day Plan', all_tasks)
+        slide_planning_gantt(prs, '90 Day Plan', all_tasks, plan_start, plan_end)
 
     prs.save(output_path)
     print(f"Saved {output_path} with {len(prs.slides)} slide(s)")
