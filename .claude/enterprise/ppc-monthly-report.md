@@ -203,7 +203,9 @@ Once the user confirms:
 2. Call the `generate_monthly_pptx` MCP tool with:
    - `client_name` = the client name the user provided
    - `slide_content` = the generated JSON string
-3. Surface the `download_url` from the returned JSON to the user as a clickable download link
+3. Surface both links from the returned JSON to the user:
+   - `download_url` — the PowerPoint deck
+   - `excel_download_url` — the raw data export (one tab per trend slide); present this as "Data export" so the user can upload it to Google Drive alongside the deck. Only show this if present in the response.
 
 ---
 
