@@ -9,6 +9,7 @@ from core.error_logger import log_error
 from core.config_dates import config_dates
 from core.get_funnel_data import get_funnel_data
 from core.get_run_rate import get_run_rate
+from core.get_plans import get_client_plan
 
 
 class TimestampEncoder(json.JSONEncoder):
@@ -30,9 +31,7 @@ def fetch_client_data(client_name):
 
     try:
         if client["plan"] != "":
-            with open("storage/plans.json", "r") as f:
-                plans = json.load(f)
-            client["plan_json"] = plans[client["name"]]
+            client["plan_json"] = get_client_plan(client["name"])
     except Exception as e:
         log_error(f"{client['name']} fetch_data: misconfigured 90 Day Plan: {e}")
         raise
