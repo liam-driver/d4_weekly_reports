@@ -170,11 +170,13 @@ For `big_number` templates: use exactly 1 metric in the graph spec. The renderer
 
 For `scorecard_vertical` and `scorecard_horizontal` as trend templates: use `graph_type: "comparison_bar"` or `"comparison_line"` and include the metrics you want as KPI boxes.
 
-Then preview the graph inline by calling the `preview_graph` MCP tool (skip for `table` and `table_commentary` — no chart to preview):
+Then preview the graph inline by calling the `preview_graph` MCP tool:
 - `client_name`: the client name
 - `graph_spec`: the graph spec JSON object serialised as a string
 
-The tool returns the chart as an inline image — display it directly below the slide text. This is mandatory. Do not skip, defer, or substitute another rendering method.
+For non-table graph types the tool returns the chart as an inline image — display it directly below the slide text. For `table` and `table_comparison` graph types the tool returns a **markdown table rendered in chat**. In both cases this step is mandatory. Do not skip, defer, or substitute another rendering method.
+
+For table previews, the user can ask you to adjust `sort_by`, `sort_dir`, `row_filters`, or `show_totals` in the spec and you re-call `preview_graph` — no re-fetch needed. Iterate until the user is happy, then lock the table spec.
 
 If the tool returns an error, surface it verbatim and do not offer confirmation — fix the spec first.
 
@@ -503,7 +505,12 @@ Generate a JSON object exactly matching this structure before calling `generate_
         "title": "string — chart title",
         "style": "string — one of: trend, comparison, distribution",
         "comparison": "string — \"mom\" or \"yoy\". Required on comparison_bar and comparison_line. Confirmed with the user. For ytd, always \"yoy\". Omit on all other graph types.",
-        "data_source": "string — required on every trend graph. Key into dimension_data, must exactly match the data_key returned by fetch_trend_data. Format: dimension column first, then filterCol=filterVal pairs sorted alphabetically, joined by ::. e.g. \"Campaign::Ad Channel=Paid Search::Ad Platform=Google\", \"Campaign::Ad Channel=Paid Search\", \"Ad Channel\"."
+        "data_source": "string — required on every trend graph. Key into dimension_data, must exactly match the data_key returned by fetch_trend_data. Format: dimension column first, then filterCol=filterVal pairs sorted alphabetically, joined by ::. e.g. \"Campaign::Ad Channel=Paid Search::Ad Platform=Google\", \"Campaign::Ad Channel=Paid Search\", \"Ad Channel\".",
+
+        "sort_by": "string — TABLE ONLY. Metric name to sort rows by, e.g. \"Cost\", \"ROAS\". Omit to sort by first metric descending.",
+        "sort_dir": "string — TABLE ONLY. \"desc\" (default) or \"asc\".",
+        "row_filters": "array — TABLE ONLY. Post-fetch filters applied before rendering. Each item: {column, op, value}. column = dimension name (e.g. \"Campaign\") or metric name (e.g. \"Cost\"). op = numeric: \">\"|\"<\"|\">=\"|\"<=\"|\"=\"|\"!=\", or string: \"contains\"|\"not_contains\"|\"=\"|\"!=\". value = number or string.",
+        "show_totals": "boolean — TABLE ONLY. true to append a bold totals row at the bottom. Additive metrics (Cost, Revenue, Conversions, etc.) are summed; derived metrics (ROAS, CPA, CTR, etc.) are recomputed from filtered component sums. Omit or false to hide."
       }
     }
   ],
@@ -525,7 +532,7 @@ Generate a JSON object exactly matching this structure before calling `generate_
 - `mtd_overview.template` / `mtd_overview.kpi_count`: same rules as `overview`.
 - `trends[].bullets`: 1–4 items per trend
 - `trends[].template`: one of the 7 valid slide templates. Defaults to `chart_commentary` if omitted.
-- `trends[].graph`: required on every trend — never `null`. For `table` and `table_commentary` templates, set `graph_type: "table_comparison"` (default) or `"table"` (current period only), and `style: "distribution"`.
+- `trends[].graph`: required on every trend — never `null`. For `table` and `table_commentary` templates, set `graph_type: "table_comparison"` (default) or `"table"` (current period only), and `style: "distribution"`. Optionally include `sort_by`, `sort_dir`, `row_filters`, and `show_totals` — confirm these with the user during the preview iteration loop before locking the spec.
 
 ---
 

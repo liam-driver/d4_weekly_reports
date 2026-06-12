@@ -18,6 +18,7 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.oxml.ns import qn
 from PIL import Image
 from core.generate_commentary import generate_monthly_slide_content, generate_mtd_slide_content
+from core.get_funnel_data import fmt_int, fmt_pct, fmt_gbp
 from monthly_reports.generate_visualisation import render_graph, initialise_brand, BRAND
 from monthly_reports.generate_data_export import export_slide_data
 
@@ -133,8 +134,9 @@ def _style_cell(cell, text, bg_colour=None, text_colour=None, bold=False,
             run.font.color.rgb = text_colour
 
 
-def _add_table_shape(slide, headers, rows, left, top, width, height, status_col=None):
-    n_rows = len(rows) + 1
+def _add_table_shape(slide, headers, rows, left, top, width, height, status_col=None, totals_row=None):
+    extra = 1 if totals_row else 0
+    n_rows = len(rows) + 1 + extra
     n_cols = len(headers)
     tbl = slide.shapes.add_table(n_rows, n_cols, left, top, width, height).table
 
@@ -148,6 +150,13 @@ def _add_table_shape(slide, headers, rows, left, top, width, height, status_col=
         for j, val in enumerate(row):
             cell_bg = STATUS_COLOURS.get(val, row_bg) if (status_col is not None and j == status_col) else row_bg
             _style_cell(tbl.cell(i + 1, j), val, bg_colour=cell_bg, text_colour=C["dark"], align=PP_ALIGN.CENTER)
+
+    if totals_row:
+        totals_row_idx = len(rows) + 1
+        for j, val in enumerate(totals_row):
+            _style_cell(tbl.cell(totals_row_idx, j), val,
+                        bg_colour=C["dark"], text_colour=C["white"],
+                        bold=True, align=PP_ALIGN.CENTER)
 
     return tbl
 
@@ -621,7 +630,7 @@ def slide_scorecard(prs, title, kpis):
     return slide
 
 
-def slide_table(prs, title, headers, rows, status_col=None):
+def slide_table(prs, title, headers, rows, status_col=None, totals_row=None):
     slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_BLANK])
     _add_title_textbox(slide, title)
     table_top = Inches(1.2)
@@ -629,11 +638,11 @@ def slide_table(prs, title, headers, rows, status_col=None):
     _add_table_shape(slide, headers, rows,
                      left=Inches(0.5), top=table_top,
                      width=prs.slide_width - Inches(1.0), height=table_h,
-                     status_col=status_col)
+                     status_col=status_col, totals_row=totals_row)
     return slide
 
 
-def slide_table_commentary(prs, title, headers, rows, bullets, status_col=None):
+def slide_table_commentary(prs, title, headers, rows, bullets, status_col=None, totals_row=None):
     slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_BLANK])
     _add_title_textbox(slide, title)
 
@@ -657,7 +666,7 @@ def slide_table_commentary(prs, title, headers, rows, bullets, status_col=None):
     _add_table_shape(slide, headers, rows,
                      left=Inches(4.7), top=table_top,
                      width=prs.slide_width - Inches(5.0), height=content_h,
-                     status_col=status_col)
+                     status_col=status_col, totals_row=totals_row)
     return slide
 
 
@@ -854,11 +863,7 @@ def slide_action_kanban(prs, title, tasks):
     for status in KANBAN_COLUMNS:
         grouped[status].sort(key=lambda t: _parse_date_for_sort(t.get('end_date', '')))
 
-    active_cols = [s for s in KANBAN_COLUMNS if grouped[s]]
-    if not active_cols:
-        return None
-
-    n_cols     = len(active_cols)
+    n_cols     = len(KANBAN_COLUMNS)
     margin_x   = Inches(0.4)
     margin_top = Inches(1.1)
     margin_bot = Inches(0.3)
@@ -868,14 +873,14 @@ def slide_action_kanban(prs, title, tasks):
 
     col_w            = (prs.slide_width - 2 * margin_x - (n_cols - 1) * col_gap) // n_cols
     available_card_h = prs.slide_height - margin_top - margin_bot - header_h - card_gap
-    max_tasks        = max(len(grouped[s]) for s in active_cols)
+    max_tasks        = max((len(grouped[s]) for s in KANBAN_COLUMNS), default=1) or 1
     card_h           = min(Inches(1.1), max(Inches(0.7),
                            (available_card_h - (max_tasks - 1) * card_gap) // max_tasks))
 
     slide = prs.slides.add_slide(prs.slide_layouts[SLD_LAYOUT_BLANK])
     _add_title_textbox(slide, title)
 
-    for col_i, status in enumerate(active_cols):
+    for col_i, status in enumerate(KANBAN_COLUMNS):
         col_x = margin_x + col_i * (col_w + col_gap)
 
         # Rounded column header
@@ -947,30 +952,158 @@ def slide_action_kanban(prs, title, tasks):
 
 # ── TABLE DATA EXTRACTION ────────────────────────────────────────────────────
 
+_ADDITIVE_METRICS = {
+    'Cost', 'Transaction Revenue', 'Conversions', 'Impressions',
+    'Clicks', 'Transactions', 'Views', 'Hooks', 'Holds',
+}
+
+# (numerator, denominator, multiplier, format_type)
+_DERIVED_METRIC_FORMULAS = {
+    'ROAS':            ('Transaction Revenue', 'Cost',               100, 'pct'),
+    'CPA':             ('Cost',                'Conversions',           1, 'gbp'),
+    'CTR':             ('Clicks',              'Impressions',         100, 'pct'),
+    'CPC':             ('Cost',                'Clicks',                1, 'gbp'),
+    'Conversion Rate': ('Conversions',         'Clicks',              100, 'pct'),
+    'AOV':             ('Transaction Revenue', 'Transactions',          1, 'gbp'),
+    'View Rate':       ('Views',               'Impressions',         100, 'pct'),
+    'Hook Rate':       ('Hooks',               'Impressions',         100, 'pct'),
+    'Hold Rate':       ('Holds',               'Impressions',         100, 'pct'),
+    'Cost Per Hook':   ('Cost',                'Hooks',                 1, 'gbp'),
+}
+
+_FMT_INT_METRICS = {
+    'Conversions', 'Impressions', 'Clicks', 'Transactions', 'Views', 'Hooks', 'Holds',
+}
+
+
+def _parse_num(s):
+    try:
+        return float(str(s).replace('£', '').replace('%', '').replace(',', '').replace('x', '').strip())
+    except (ValueError, AttributeError):
+        return 0.0
+
+
+def _fmt_metric(metric, value):
+    if metric in _FMT_INT_METRICS:
+        return fmt_int(value)
+    elif metric in ('Cost', 'Transaction Revenue') or metric in _DERIVED_METRIC_FORMULAS and _DERIVED_METRIC_FORMULAS[metric][3] == 'gbp':
+        return fmt_gbp(value)
+    else:
+        return fmt_pct(value)
+
+
+def _apply_row_filters(items, row_filters, dimension_col):
+    def _passes(dim_val, metric_dict):
+        for f in row_filters:
+            col = f.get('column', '')
+            op  = f.get('op', '=')
+            val = f.get('value')
+            if col == dimension_col:
+                s = str(dim_val)
+                sv = str(val)
+                if   op == 'contains'     and sv not in s:  return False
+                elif op == 'not_contains' and sv in s:       return False
+                elif op == '='            and s != sv:       return False
+                elif op == '!='           and s == sv:       return False
+            else:
+                raw = metric_dict.get(col, {})
+                curr_str = raw.get('curr', '0') if isinstance(raw, dict) else '0'
+                try:
+                    n  = _parse_num(curr_str)
+                    fv = float(val)
+                    if   op == '>'  and not (n >  fv): return False
+                    elif op == '<'  and not (n <  fv): return False
+                    elif op == '>=' and not (n >= fv): return False
+                    elif op == '<=' and not (n <= fv): return False
+                    elif op == '='  and not (n == fv): return False
+                    elif op == '!=' and not (n != fv): return False
+                except (ValueError, TypeError):
+                    return False
+        return True
+    return [(dv, md) for dv, md in items if _passes(dv, md)]
+
+
+def _compute_metric_raw(metric, sums):
+    if metric in _ADDITIVE_METRICS:
+        return sums.get(metric, 0.0)
+    if metric in _DERIVED_METRIC_FORMULAS:
+        num_key, denom_key, mult, _ = _DERIVED_METRIC_FORMULAS[metric]
+        denom = sums.get(denom_key, 0.0)
+        if denom == 0:
+            return None
+        return (sums.get(num_key, 0.0) / denom) * mult
+    return None
+
+
+def _compute_totals_row(items, metrics, comparison):
+    needed = set()
+    for m in metrics:
+        if m in _ADDITIVE_METRICS:
+            needed.add(m)
+        elif m in _DERIVED_METRIC_FORMULAS:
+            num_key, denom_key, _, _ = _DERIVED_METRIC_FORMULAS[m]
+            needed.add(num_key)
+            needed.add(denom_key)
+
+    curr_sums = {k: 0.0 for k in needed}
+    prev_sums = {k: 0.0 for k in needed} if comparison else {}
+
+    for _, metric_dict in items:
+        for comp in needed:
+            vals = metric_dict.get(comp, {})
+            if isinstance(vals, dict):
+                curr_sums[comp] += _parse_num(vals.get('curr', '0'))
+                if comparison:
+                    prev_sums[comp] += _parse_num(vals.get('prev', '0'))
+
+    row = ['Totals']
+    for m in metrics:
+        curr_raw = _compute_metric_raw(m, curr_sums)
+        row.append(_fmt_metric(m, curr_raw) if curr_raw is not None else '—')
+        if comparison:
+            prev_raw = _compute_metric_raw(m, prev_sums)
+            row.append(_fmt_metric(m, prev_raw) if prev_raw is not None else '—')
+            if curr_raw is not None and prev_raw and prev_raw != 0:
+                pct = (curr_raw - prev_raw) / abs(prev_raw) * 100
+                row.append(f"+{pct:.1f}%" if pct >= 0 else f"{pct:.1f}%")
+            else:
+                row.append('—')
+    return row
+
+
 def render_table_data(graph, client, max_rows=12, comparison=True):
-    """Convert dimension_data into (headers, rows) for slide_table / slide_table_commentary.
+    """Convert dimension_data into (headers, rows, totals_row) for table slides.
 
     comparison=True  (graph_type 'table_comparison'): curr + prev + % change per metric.
     comparison=False (graph_type 'table'):             current period values only.
-    Rows sorted by first metric current value descending, capped at max_rows.
+    Returns (headers, rows, totals_row) — totals_row is None when show_totals is falsy.
     """
     data_source = graph.get('data_source')
     if not data_source:
-        return [], []
+        return [], [], None
 
     dim_entry     = client.get('dimension_data', {}).get(data_source, {})
     comp_key      = 'yoy' if graph.get('comparison') == 'yoy' else 'mom'
     comp_data     = dim_entry.get(comp_key, {})
     metrics       = graph.get('metrics', [])
     dimension_col = data_source.split('::')[0]
+    row_filters   = graph.get('row_filters', [])
+    sort_by       = graph.get('sort_by')
+    sort_dir      = graph.get('sort_dir', 'desc')
+    show_totals   = graph.get('show_totals', False)
 
     if not comp_data or not metrics:
-        return [], []
+        return [], [], None
+
+    items = [(dv, md) for dv, md in comp_data.items() if isinstance(md, dict)]
+
+    if row_filters:
+        items = _apply_row_filters(items, row_filters, dimension_col)
+
+    totals_row = _compute_totals_row(items, metrics, comparison) if show_totals else None
 
     rows = []
-    for dim_val, metric_dict in comp_data.items():
-        if not isinstance(metric_dict, dict):
-            continue
+    for dim_val, metric_dict in items:
         row = [str(dim_val)]
         for m in metrics:
             vals = metric_dict.get(m, {})
@@ -985,14 +1118,16 @@ def render_table_data(graph, client, max_rows=12, comparison=True):
                     row.extend(['—', '—'])
         rows.append(row)
 
-    def _sort_key(r):
-        raw = r[1] if len(r) > 1 else '0'
-        try:
-            return float(str(raw).replace('£', '').replace('%', '').replace(',', '').strip())
-        except ValueError:
-            return 0.0
+    # Sort: find column index for sort_by, default to first metric col
+    if sort_by and sort_by in metrics:
+        col_idx = 1 + metrics.index(sort_by) * (3 if comparison else 1)
+    else:
+        col_idx = 1
 
-    rows.sort(key=_sort_key, reverse=True)
+    def _sort_key(r):
+        return _parse_num(r[col_idx]) if col_idx < len(r) else 0.0
+
+    rows.sort(key=_sort_key, reverse=(sort_dir != 'asc'))
     rows = rows[:max_rows]
 
     headers = [dimension_col]
@@ -1001,7 +1136,7 @@ def render_table_data(graph, client, max_rows=12, comparison=True):
         if comparison:
             headers += [f"{m} (prev)", f"{m} (%)"]
 
-    return headers, rows
+    return headers, rows, totals_row
 
 
 # ── SLIDE TEMPLATE REGISTRY ───────────────────────────────────────────────────
@@ -1078,14 +1213,14 @@ def _render_trend_slide(prs, client, trend):
 
     if template in ('table', 'table_commentary'):
         comparison = graph.get('graph_type') == 'table_comparison'
-        headers, rows = render_table_data(graph, client, comparison=comparison)
+        headers, rows, totals_row = render_table_data(graph, client, comparison=comparison)
         if not headers:
             slide_commentary(prs, title, summary, bullets)
             return
         if template == 'table_commentary':
-            slide_table_commentary(prs, title, headers, rows, bullets)
+            slide_table_commentary(prs, title, headers, rows, bullets, totals_row=totals_row)
         else:
-            slide_table(prs, title, headers, rows)
+            slide_table(prs, title, headers, rows, totals_row=totals_row)
         return
 
     chart_path = render_graph(client, graph) if graph.get('data_source') else None

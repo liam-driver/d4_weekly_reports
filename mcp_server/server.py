@@ -355,19 +355,34 @@ def fetch_trend_data(client_name: str, channel: str, dimension: str, channel_fil
     return json.dumps(result, ensure_ascii=False)
 
 
+def _render_markdown_table(headers, rows, totals_row):
+    sep = ['---'] * len(headers)
+    lines = [
+        '| ' + ' | '.join(headers) + ' |',
+        '| ' + ' | '.join(sep) + ' |',
+    ]
+    for row in rows:
+        lines.append('| ' + ' | '.join(str(c) for c in row) + ' |')
+    if totals_row:
+        lines.append('| ' + ' | '.join(f'**{c}**' for c in totals_row) + ' |')
+    return '\n'.join(lines)
+
+
 @mcp.tool()
 def preview_graph(client_name: str, graph_spec: str) -> list:
-    """Render a graph preview for a trend slide and return it as an inline image.
-    Call this after confirming the slide template, before asking the user to confirm the slide.
+    """Render a graph preview for a trend slide.
+
+    For table and table_comparison graph types: returns a markdown table as text so it
+    renders inline in the conversation. Filters, sort, and totals from the spec are applied.
+
+    For all other graph types: returns the chart as an inline image.
 
     client_name: the client name as it appears in config.json.
     graph_spec: the graph spec JSON object serialised as a string — must match the Graph Schema
                 in the monthly report instructions exactly.
 
-    Returns the chart as an inline image so it can be displayed in the conversation.
     Raises an error (do not offer confirmation) if the spec is invalid or metrics are missing.
     """
-    from mcp.types import ImageContent
     _validate_client_name(client_name)
 
     data_path = os.path.join(PROJECT_ROOT, "storage", f"{client_name}_monthly_data.json")
@@ -379,6 +394,19 @@ def preview_graph(client_name: str, graph_spec: str) -> list:
 
     spec = json.loads(graph_spec)
 
+    if spec.get('graph_type') in ('table', 'table_comparison'):
+        from mcp.types import TextContent
+        from monthly_reports.generate_ppt import render_table_data
+        comparison = spec.get('graph_type') == 'table_comparison'
+        headers, rows, totals_row = render_table_data(spec, client_data, comparison=comparison)
+        if not headers:
+            raise ValueError(
+                "render_table_data returned empty — check that data_source and metrics exist in the fetched data"
+            )
+        md = _render_markdown_table(headers, rows, totals_row)
+        return [TextContent(type="text", text=md)]
+
+    from mcp.types import ImageContent
     from monthly_reports.generate_visualisation import render_graph, initialise_brand
     initialise_brand()
 

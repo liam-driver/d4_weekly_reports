@@ -1002,54 +1002,14 @@ def render_big_number_chart(graph, client):
 
 
 def render_table_chart(graph, client):
-    title       = graph.get("title", "")
-    data_source = graph.get("data_source")
-    if not data_source:
-        return None
+    title = graph.get("title", "")
 
-    comparison    = graph.get("graph_type") == "table_comparison"
-    dim_entry     = client.get("dimension_data", {}).get(data_source, {})
-    comp_key      = "yoy" if graph.get("comparison") == "yoy" else "mom"
-    comp_data     = dim_entry.get(comp_key, {})
-    metrics       = graph.get("metrics", [])
-    dimension_col = data_source.split("::")[0]
+    from monthly_reports.generate_ppt import render_table_data
+    comparison = graph.get("graph_type") == "table_comparison"
+    headers, rows, totals_row = render_table_data(graph, client, comparison=comparison)
 
-    if not comp_data or not metrics:
-        return None
-
-    rows = []
-    for dim_val, metric_dict in comp_data.items():
-        if not isinstance(metric_dict, dict):
-            continue
-        row = [str(dim_val)]
-        for m in metrics:
-            vals = metric_dict.get(m, {})
-            if isinstance(vals, dict):
-                row.append(str(vals.get("curr", "—")))
-                if comparison:
-                    row.append(str(vals.get("prev", "—")))
-                    row.append(str(vals.get("pct", "—")))
-            else:
-                row.append("—")
-                if comparison:
-                    row.extend(["—", "—"])
-        rows.append(row)
-
-    def _sort_key(r):
-        raw = r[1] if len(r) > 1 else "0"
-        try:
-            return float(str(raw).replace("£", "").replace("%", "").replace(",", "").strip())
-        except ValueError:
-            return 0.0
-
-    rows.sort(key=_sort_key, reverse=True)
-    rows = rows[:12]
-
-    headers = [dimension_col]
-    for m in metrics:
-        headers.append(m)
-        if comparison:
-            headers += [f"{m} (prev)", f"{m} (%)"]
+    if totals_row:
+        rows = rows + [totals_row]
 
     if not rows:
         return None
